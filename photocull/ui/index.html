@@ -1,0 +1,159 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PhotoCull</title>
+<link rel="stylesheet" href="/ui/styles.css">
+</head>
+<body>
+
+<!-- Onboarding: API key -->
+<section id="onboarding" class="screen" hidden>
+  <div class="onboard-card">
+    <div class="mark" aria-hidden="true"><span></span><span></span><span></span></div>
+    <h1>PhotoCull</h1>
+    <p class="lede">From three hundred frames to the ones worth editing.</p>
+    <form id="key-form" autocomplete="off">
+      <label for="key-input">Your Claude API key</label>
+      <input id="key-input" type="password" placeholder="sk-ant-..." spellcheck="false" required>
+      <p class="hint">Stored in your Mac's Keychain. Only small preview images of your photos are
+        sent to Claude, never the originals.
+        <a href="#" data-url="https://console.anthropic.com/settings/keys">Get a key</a></p>
+      <label for="model-select">Model</label>
+      <select id="model-select"></select>
+      <p class="error" id="key-error" role="alert"></p>
+      <button class="btn primary" type="submit">Continue</button>
+    </form>
+  </div>
+</section>
+
+<!-- Home: choose a shoot -->
+<section id="home" class="screen" hidden>
+  <header class="topbar">
+    <div class="brand"><div class="mark small" aria-hidden="true"><span></span><span></span><span></span></div>PhotoCull</div>
+    <button class="icon-btn" data-open="settings" aria-label="Settings">⚙</button>
+  </header>
+  <div class="home-body">
+    <button id="choose-folder" class="dropzone">
+      <span class="dz-title">Choose a shoot</span>
+      <span class="dz-sub">A folder of JPEG or HEIC photos. Originals are never moved or changed.</span>
+    </button>
+    <form id="path-form" class="path-form" hidden>
+      <input id="path-input" placeholder="/Users/you/Pictures/Shoot" spellcheck="false">
+      <button class="btn">Open</button>
+    </form>
+    <div id="recent-wrap" hidden>
+      <h2 class="eyebrow">Recent</h2>
+      <ul id="recent"></ul>
+    </div>
+  </div>
+</section>
+
+<!-- The sort: animated stage -->
+<section id="stage-screen" class="screen" hidden>
+  <header class="topbar">
+    <button class="icon-btn" id="stage-back" aria-label="Back">←</button>
+    <div class="shoot-name" id="shoot-name"></div>
+    <ol class="steps" id="steps">
+      <li data-step="ingest">Read</li><li data-step="technical">Check</li>
+      <li data-step="moments">Group</li><li data-step="review">Review</li><li data-step="done">Done</li>
+    </ol>
+    <div class="status" id="status" aria-live="polite"></div>
+  </header>
+  <div id="stage">
+    <div id="clusters"></div>
+    <div id="layer"></div>
+    <div class="tray" id="discard"><span>Discard</span><b id="discard-count">0</b></div>
+    <div class="rail" id="rail"><span class="rail-label">Picks <b id="rail-picks">0</b></span>
+      <span class="rail-label gem">Hidden gems <b id="rail-gems">0</b></span></div>
+    <div class="panel" id="estimate" hidden>
+      <div class="est-text" id="est-text"></div>
+      <div class="panel-actions">
+        <button class="btn primary" id="start-review">Review with Claude</button>
+        <button class="btn ghost" data-open="settings">Change model</button>
+      </div>
+    </div>
+    <div class="panel" id="finished" hidden>
+      <div class="est-text" id="finished-text"></div>
+      <div class="panel-actions"><button class="btn primary" id="see-results">See results</button></div>
+    </div>
+  </div>
+</section>
+
+<!-- Results -->
+<section id="results" class="screen" hidden>
+  <header class="topbar">
+    <button class="icon-btn" id="results-back" aria-label="Back to home">←</button>
+    <div class="shoot-name" id="results-name"></div>
+    <nav class="tabs" role="tablist" id="tabs">
+      <button role="tab" data-tab="pick" aria-selected="true">Picks <b></b></button>
+      <button role="tab" data-tab="gem">Hidden gems <b></b></button>
+      <button role="tab" data-tab="moments">Moments <b></b></button>
+      <button role="tab" data-tab="rejected">Rejects <b></b></button>
+    </nav>
+    <div class="topbar-actions">
+      <button class="icon-btn" data-open="settings" aria-label="Settings">⚙</button>
+      <button class="btn primary" id="export">Copy to folders</button>
+    </div>
+  </header>
+  <div class="results-body">
+    <p class="tab-intro" id="tab-intro"></p>
+    <div id="grid" class="grid"></div>
+  </div>
+</section>
+
+<!-- Detail -->
+<div class="modal" id="detail" hidden role="dialog" aria-modal="true" aria-label="Photo details">
+  <div class="detail">
+    <button class="icon-btn close" data-close aria-label="Close">✕</button>
+    <div class="detail-main">
+      <img id="detail-img" alt="">
+      <figure class="crop"><img id="detail-crop" alt="100% crop"><figcaption>100% focus check</figcaption></figure>
+    </div>
+    <aside class="detail-side">
+      <div class="badge" id="detail-badge"></div>
+      <h3 id="detail-title"></h3>
+      <p id="detail-reason" class="reason"></p>
+      <dl class="scores" id="detail-scores"></dl>
+      <div id="detail-recipe" class="recipe" hidden></div>
+      <p id="detail-notes" class="notes"></p>
+      <div class="detail-actions" id="detail-actions"></div>
+      <h4 class="eyebrow">Same moment</h4>
+      <div class="strip" id="detail-strip"></div>
+    </aside>
+  </div>
+</div>
+
+<!-- Settings -->
+<div class="modal" id="settings" hidden role="dialog" aria-modal="true" aria-label="Settings">
+  <div class="sheet">
+    <button class="icon-btn close" data-close aria-label="Close">✕</button>
+    <h2>Settings</h2>
+    <label for="settings-model">Model</label>
+    <select id="settings-model"></select>
+    <p class="hint">Sonnet is quick and inexpensive. Opus has the sharpest eye and costs about twice as much.</p>
+    <div id="shoot-settings" hidden>
+      <label for="min-score">Pick threshold <output id="min-score-out"></output></label>
+      <input type="range" id="min-score" min="5" max="9" step="0.1">
+      <label for="gem-threshold">Hidden gem threshold <output id="gem-out"></output></label>
+      <input type="range" id="gem-threshold" min="6" max="10" step="0.5">
+    </div>
+    <label>API key</label>
+    <div class="row">
+      <button class="btn ghost" id="replace-key">Replace key</button>
+      <button class="btn ghost danger" id="remove-key">Remove key</button>
+    </div>
+    <label>Your taste</label>
+    <div class="row"><span class="hint" id="taste-count"></span>
+      <button class="btn ghost" id="reset-taste">Forget</button></div>
+  </div>
+</div>
+
+<div class="toast" id="toast" role="status" hidden></div>
+
+<script src="/ui/vendor/gsap.min.js"></script>
+<script src="/ui/stage.js"></script>
+<script src="/ui/app.js"></script>
+</body>
+</html>

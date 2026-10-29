@@ -88,7 +88,7 @@ form .btn.primary { margin-top: 8px; justify-self: stretch; padding: 12px; }
 
 /* ---------- top bars ---------- */
 .topbar {
-  height: 56px; flex: none; display: flex; align-items: center; gap: 14px; padding: 0 16px 0 84px;
+  height: 56px; flex: none; display: flex; align-items: center; gap: 14px; padding: 0 16px;
   border-bottom: 1px solid rgba(46, 42, 37, .7); background: rgba(15, 14, 13, .6);
   backdrop-filter: blur(12px); -webkit-app-region: drag; position: relative; z-index: 20;
 }

@@ -11,9 +11,12 @@ import numpy as np
 
 from .grouping import hash_distance
 
-MAX_GAP_S = 90       # a pause longer than this always starts a new moment
-HASH_CLOSE = 44      # combined pHash+dHash distance (0-128) for "same composition"
-HIST_CLOSE = 0.80    # HSV histogram correlation for "same colours/light"
+# Deliberately generous (tuned on a hand-labelled 278-photo shoot): merging two subjects
+# costs little because Claude names one best frame per distinct subject, while splitting
+# one subject across moments yields duplicate picks nobody compares.
+MAX_GAP_S = 180      # a pause longer than this always starts a new moment
+HASH_CLOSE = 56      # combined pHash+dHash distance (0-128) for "same composition"
+HIST_CLOSE = 0.70    # HSV histogram correlation for "same colours/light"
 LOOKBACK = 6         # compare with this many recent frames of the moment
 
 

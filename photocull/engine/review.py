@@ -39,10 +39,11 @@ For each frame give:
 - edit_recipe: if edit_potential is at least 2 above score, a short concrete recipe such as
   "Lift shadows +1, warm WB +300K, straighten 2 degrees, crop to 4:5"; otherwise an empty string.
 
-Then give best_ids: the frame the photographer should keep from this moment. A moment almost
-always has exactly one. Only if the frames clearly show different subjects (the grouping can
-be wrong) list the best frame of each subject, at most 3. Never list two variants of the same
-subject. Leave best_ids empty if no frame scores 6 or more.
+Then give best_ids: the frames the photographer should keep, exactly one per distinct subject
+or moment. The grouping is generous, so a set can hold a few different subjects shot back to
+back (a portrait, then the cake, then a skyline): list the best frame of each, at most 4.
+Never list two variants of the same subject, angle or scene - pick the stronger one. Skip any
+subject whose best frame scores below 6.
 
 {_RUBRIC}"""
 
@@ -114,9 +115,11 @@ class ClaudeReviewer:
         self.model = model
         self.effort = effort
 
-    def review(self, photos, read_thumb, taste_notes=""):
+    def review(self, photos, read_thumb, taste_notes="", final_round=False):
         """Review one moment batch. photos: dicts with id/file/notes; read_thumb(p) -> JPEG bytes.
 
+        final_round: the photos are the winners of several batches of one long moment; Claude
+        re-scores them side by side and keeps one per distinct subject.
         Returns (result dict keyed by photo id, best_ids, usage dict).
         """
         content = []
@@ -129,6 +132,10 @@ class ClaudeReviewer:
                 "type": "base64", "media_type": "image/jpeg",
                 "data": base64.standard_b64encode(read_thumb(p)).decode("ascii")}})
         ask = f"Review this moment ({len(photos)} frames)."
+        if final_round:
+            ask = (f"These {len(photos)} frames are the winners of separate batches of one long "
+                   "sequence. Compare them side by side: where two show the same subject, keep only "
+                   "the stronger one in best_ids.")
         if taste_notes:
             ask += "\n\nWhat this photographer has told you through past picks:\n" + taste_notes
         content.append({"type": "text", "text": ask})

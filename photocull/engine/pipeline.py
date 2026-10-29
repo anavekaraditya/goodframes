@@ -106,33 +106,48 @@ def review_estimate(shoot, model):
 
 def review(shoot, reviewer, on_event=_noop, workers=4):
     """Send unreviewed moments to Claude. Already-reviewed moments cost nothing."""
-    batches = pending_batches(shoot)
-    on_event({"type": "stage", "stage": "review", "requests": len(batches)})
+    by_moment = {}
+    for m, batch in pending_batches(shoot):
+        by_moment.setdefault(m, []).append(batch)
+    on_event({"type": "stage", "stage": "review", "moments": len(by_moment)})
     notes = taste.prompt_notes()
     spent, errors, t0 = 0.0, [], time.time()
 
-    def run(moment_id, batch):
-        on_event({"type": "review_start", "moment": moment_id, "ids": [p["id"] for p in batch]})
-        return moment_id, batch, reviewer.review(batch, shoot.read_thumb, notes)
+    def run(moment_id, batches):
+        """All batches of one moment, then a final round between batch winners if needed."""
+        on_event({"type": "review_start", "moment": moment_id,
+                  "ids": [p["id"] for b in batches for p in b]})
+        results, usages, winners = {}, [], []
+        for batch in batches:
+            res, best_ids, usage = reviewer.review(batch, shoot.read_thumb, notes)
+            results.update(res)
+            usages.append(usage)
+            winners += [p for p in batch if p["id"] in best_ids]
+        best_ids = [p["id"] for p in winners]
+        if len(batches) > 1 and len(winners) > 1:
+            res, best_ids, usage = reviewer.review(winners, shoot.read_thumb, notes, final_round=True)
+            for pid, r in res.items():  # side-by-side scores are the better-calibrated ones
+                results[pid].update(score=r["score"], reason=r["reason"])
+            usages.append(usage)
+        for pid, r in results.items():
+            r["best"] = pid in best_ids
+        return moment_id, results, usages
 
     with ThreadPoolExecutor(max_workers=workers) as pool:
-        futures = [pool.submit(run, m, b) for m, b in batches]
+        futures = [pool.submit(run, m, b) for m, b in by_moment.items()]
         for fut in as_completed(futures):
             try:
-                moment_id, batch, (results, best_ids, usage) = fut.result()
+                moment_id, results, usages = fut.result()
             except ReviewError as e:
                 errors.append(str(e))
                 on_event({"type": "review_error", "error": str(e)})
                 continue
-            for pid, r in results.items():
-                r["best"] = pid in best_ids
-                r["subjects"] = max(len(best_ids), 1)
             shoot.store.put_reviews({shoot.by_id(pid)["fp"]: r for pid, r in results.items()},
                                     reviewer.model, RUBRIC_VERSION)
-            spent += usage_cost(usage, reviewer.model)
+            spent += sum(usage_cost(u, reviewer.model) for u in usages)
             decide(shoot)
             on_event({"type": "review_done", "moment": moment_id, "spent": round(spent, 3),
-                      "photos": [summary(shoot.by_id(p["id"])) for p in batch]})
+                      "photos": [summary(shoot.by_id(pid)) for pid in results]})
     decide(shoot)
     on_event({"type": "reviewed", "spent": round(spent, 3), "errors": errors,
               "seconds": round(time.time() - t0, 1)})
@@ -160,13 +175,9 @@ def decide(shoot, settings=None):
     for m in shoot.moments:
         cands = [p for p in candidates(shoot, m) if p["status"] == "candidate"]
         reviewed = [p for p in cands if p["review"]]
-        best = []  # unreviewed moments get no automatic pick
-        if reviewed:
-            # Big moments are reviewed in several batches, each naming its own best frame;
-            # keep only as many as Claude saw distinct subjects in a single batch.
-            limit = max(p["review"].get("subjects", 1) for p in reviewed)
-            best = sorted((p for p in reviewed if p["review"].get("best") and p["final"] >= s["min_score"]),
-                          key=lambda p: -p["final"])[:limit]
+        # One pick per distinct subject Claude named (unreviewed moments get none).
+        best = sorted((p for p in reviewed if p["review"].get("best") and p["final"] >= s["min_score"]),
+                      key=lambda p: -p["final"])
         for p in best:
             p["status"] = "pick"
         top = best[0] if best else None

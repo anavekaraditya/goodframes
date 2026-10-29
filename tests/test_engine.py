@@ -100,3 +100,16 @@ def test_estimate_and_schema():
     batch = [{"width": 6000, "height": 4000}] * 10
     cost = review.estimate_cost([batch], "claude-sonnet-5-5", lambda p: (1024, 683))
     assert 0.01 < cost < 0.2
+
+
+def test_long_moment_final_round_keeps_one(shoot_dir, monkeypatch):
+    from photocull.engine import moments
+    real = moments.chunks
+    monkeypatch.setattr(moments, "chunks", lambda items, size=12: real(items, size=1))
+    shoot = _analyze(shoot_dir)
+    rev = FakeReviewer({"IMG_501": {"score": 8.5}})
+    pipeline.review(shoot, rev)
+    assert rev.finals >= 1  # the wide/tight reframe moment needed a final comparison
+    f = _by_file(shoot)
+    assert f["IMG_501_tight.jpg"]["status"] == "pick"
+    assert f["IMG_500_wide.jpg"]["status"] == "similar"

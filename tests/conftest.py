@@ -102,10 +102,12 @@ class FakeReviewer:
 
     def __init__(self, rules=None):
         self.calls = 0
+        self.finals = 0
         self.rules = rules or {}
 
-    def review(self, photos, read_thumb, taste_notes=""):
+    def review(self, photos, read_thumb, taste_notes="", final_round=False):
         self.calls += 1
+        self.finals += final_round
         results = {}
         for p in photos:
             r = {"id": p["id"], "score": 7.5, "reason": "fine", "reject": False,

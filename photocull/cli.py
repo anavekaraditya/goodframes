@@ -87,7 +87,6 @@ def cmd_import(args):
             items[p["fp"]] = {
                 "id": p["id"], "score": float(d["score"]), "reason": d.get("reason", ""),
                 "reject": bool(d.get("reject")), "best": p["id"] in flagged,
-                "subjects": max(len(flagged), 1),
                 "edit_potential": float(max(d.get("edit_potential", d["score"]), d["score"])),
                 "fixable_flaws": d.get("fixable_flaws", []), "edit_recipe": d.get("edit_recipe", ""),
             }

@@ -2,8 +2,8 @@
 import os
 import shutil
 
-PICKS_DIR = os.path.join("PhotoCull", "Picks")
-GEMS_DIR = os.path.join("PhotoCull", "Hidden Gems")
+PICKS_DIR = os.path.join("Goodframes", "Picks")
+GEMS_DIR = os.path.join("Goodframes", "Hidden Gems")
 
 
 def _ranked(shoot, status):

@@ -1,4 +1,4 @@
-/* PhotoCull UI: screens, API calls, live events and the results browser. */
+/* Goodframes UI: screens, API calls, live events and the results browser. */
 (function () {
   const $ = (s) => document.querySelector(s);
   const $$ = (s) => [...document.querySelectorAll(s)];
@@ -45,6 +45,7 @@
   async function boot() {
     Stage.init();
     app.settings = await api("/api/settings");
+    applyTheme(app.settings.theme);
     fillModelSelects();
     connectEvents();
     if (!app.settings.has_key) show("onboarding");
@@ -460,6 +461,7 @@
   /* ---------- settings ---------- */
   async function openSettings() {
     app.settings = await api("/api/settings");
+    applyTheme(app.settings.theme);
     fillModelSelects();
     $("#taste-count").textContent = app.settings.taste_count
       ? `Learned from ${app.settings.taste_count} of your choices` : "Nothing learned yet";
@@ -477,6 +479,22 @@
     $("#min-score-out").textContent = (+$("#min-score").value).toFixed(1);
     $("#gem-out").textContent = (+$("#gem-threshold").value).toFixed(1);
   }
+
+  function applyTheme(theme) {
+    document.documentElement.dataset.theme = theme;
+    $("#theme-toggle").setAttribute("aria-checked", String(theme === "dark"));
+  }
+
+  $("#theme-toggle").addEventListener("click", async () => {
+    const previous = document.documentElement.dataset.theme;
+    applyTheme(previous === "dark" ? "light" : "dark");
+    try {
+      app.settings = await api("/api/settings", { body: { theme: document.documentElement.dataset.theme } });
+    } catch (err) {
+      applyTheme(previous);
+      toast("Couldn't save the theme");
+    }
+  });
 
   $("#settings-model").addEventListener("change", async (e) => {
     app.settings = await api("/api/settings", { body: { model: e.target.value } });

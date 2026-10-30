@@ -1,4 +1,4 @@
-"""PhotoCull desktop launcher: local server + native window (pywebview/WKWebView)."""
+"""Goodframes desktop launcher: local server + native window (pywebview/WKWebView)."""
 import multiprocessing
 import socket
 import threading
@@ -15,6 +15,7 @@ def main():
     import uvicorn
     import webview
 
+    from photocull import settings
     from photocull.server.app import app
 
     port = _free_port()
@@ -25,8 +26,8 @@ def main():
             break
         time.sleep(0.025)
 
-    window = webview.create_window("PhotoCull", f"http://127.0.0.1:{port}/", width=1360, height=880,
-                                   min_size=(900, 620), background_color="#0f0e0d")
+    window = webview.create_window("Goodframes", f"http://127.0.0.1:{port}/", width=1360, height=880,
+                                   min_size=(900, 620), background_color=settings.THEME_BACKGROUNDS[settings.load()["theme"]])
 
     def pick_folder():
         chosen = window.create_file_dialog(webview.FileDialog.FOLDER)

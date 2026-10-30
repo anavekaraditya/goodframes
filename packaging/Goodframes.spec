@@ -1,4 +1,4 @@
-# PyInstaller spec for PhotoCull.app  -  build with:  .venv/bin/pyinstaller packaging/PhotoCull.spec
+# PyInstaller spec for Goodframes.app  -  build with:  .venv/bin/pyinstaller packaging/Goodframes.spec
 import os
 import cv2
 
@@ -24,14 +24,14 @@ a = Analysis(
     excludes=["tkinter", "matplotlib", "pytest", "IPython"],
 )
 pyz = PYZ(a.pure)
-exe = EXE(pyz, a.scripts, [], exclude_binaries=True, name="PhotoCull", console=False,
+exe = EXE(pyz, a.scripts, [], exclude_binaries=True, name="Goodframes", console=False,
           argv_emulation=False, codesign_identity=None)
-coll = COLLECT(exe, a.binaries, a.datas, name="PhotoCull")
+coll = COLLECT(exe, a.binaries, a.datas, name="Goodframes")
 app = BUNDLE(
     coll,
-    name="PhotoCull.app",
-    icon=os.path.join(ROOT, "packaging", "PhotoCull.icns"),
-    bundle_identifier="com.adityaanavekar.photocull",
+    name="Goodframes.app",
+    icon=os.path.join(ROOT, "packaging", "Goodframes.icns"),
+    bundle_identifier="com.adityaanavekar.goodframes",
     info_plist={
         "CFBundleShortVersionString": "0.1.0",
         "NSHighResolutionCapable": True,

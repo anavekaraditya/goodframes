@@ -54,7 +54,7 @@ def cmd_review(args):
     shoot = _shoot(args.folder)
     key = settings.get_api_key()
     if not key:
-        sys.exit("No API key: set one in the PhotoCull app or export ANTHROPIC_API_KEY.")
+        sys.exit("No API key: set one in the Goodframes app or export ANTHROPIC_API_KEY.")
     model = args.model or settings.load()["model"]
     est = pipeline.review_estimate(shoot, model)
     print(f"Reviewing {est['photos']} photos in {est['moments']} moments (~${est['cost']})")

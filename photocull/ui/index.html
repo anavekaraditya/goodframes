@@ -1,9 +1,9 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" data-theme="dark">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>PhotoCull</title>
+<title>Goodframes</title>
 <link rel="stylesheet" href="/ui/styles.css">
 </head>
 <body>
@@ -12,7 +12,7 @@
 <section id="onboarding" class="screen" hidden>
   <div class="onboard-card">
     <div class="mark" aria-hidden="true"><span></span><span></span><span></span></div>
-    <h1>PhotoCull</h1>
+    <h1>Goodframes</h1>
     <p class="lede">From three hundred frames to the ones worth editing.</p>
     <form id="key-form" autocomplete="off">
       <label for="key-input">Your Claude API key</label>
@@ -31,7 +31,7 @@
 <!-- Home: choose a shoot -->
 <section id="home" class="screen" hidden>
   <header class="topbar">
-    <div class="brand"><div class="mark small" aria-hidden="true"><span></span><span></span><span></span></div>PhotoCull</div>
+    <div class="brand"><div class="mark small" aria-hidden="true"><span></span><span></span><span></span></div>Goodframes</div>
     <button class="icon-btn" data-open="settings" aria-label="Settings">⚙</button>
   </header>
   <div class="home-body">
@@ -130,6 +130,9 @@
   <div class="sheet">
     <button class="icon-btn close" data-close aria-label="Close">✕</button>
     <h2>Settings</h2>
+    <label>Appearance</label>
+    <div class="row"><span class="hint">Dark theme</span>
+      <button class="switch" id="theme-toggle" type="button" role="switch" aria-checked="true" aria-label="Dark theme"></button></div>
     <label for="settings-model">Model</label>
     <select id="settings-model"></select>
     <p class="hint">Sonnet is quick and inexpensive. Opus has the sharpest eye and costs about twice as much.</p>

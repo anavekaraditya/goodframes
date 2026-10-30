@@ -9,7 +9,8 @@ from .engine.review import DEFAULT_MODEL, MODELS
 
 KEYCHAIN_SERVICE = "PhotoCull"
 KEYCHAIN_USER = "anthropic-api-key"
-DEFAULTS = {"model": DEFAULT_MODEL, "effort": "medium", "recent": []}
+THEME_BACKGROUNDS = {"dark": "#0f0e0d", "light": "#f5f0e7"}  # shown by the native window before the page paints
+DEFAULTS = {"model": DEFAULT_MODEL, "effort": "medium", "recent": [], "theme": "dark"}
 
 
 def _path():
@@ -31,6 +32,8 @@ def save(**changes):
     s.update({k: v for k, v in changes.items() if k in DEFAULTS})
     if s["model"] not in MODELS:
         s["model"] = DEFAULT_MODEL
+    if s["theme"] not in THEME_BACKGROUNDS:
+        s["theme"] = DEFAULTS["theme"]
     with open(_path(), "w") as f:
         json.dump(s, f)
     return s

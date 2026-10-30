@@ -12,7 +12,7 @@ import threading
 import webbrowser
 
 from fastapi import FastAPI, HTTPException
-from fastapi.responses import FileResponse, Response, StreamingResponse
+from fastapi.responses import FileResponse, HTMLResponse, Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from PIL import Image, ImageOps
 from pydantic import BaseModel
@@ -24,7 +24,7 @@ from ..engine.store import Store
 
 UI_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), "ui")
 
-app = FastAPI(title="PhotoCull")
+app = FastAPI(title="Goodframes")
 DEMO = bool(os.environ.get("PHOTOCULL_DEMO"))  # dev only: fake reviews, no API key needed
 app.state.pick_folder = None  # set by the desktop launcher (native folder dialog)
 
@@ -105,6 +105,7 @@ class KeyIn(BaseModel):
 
 class SettingsIn(BaseModel):
     model: str | None = None
+    theme: str | None = None
 
 
 class ShootSettingsIn(BaseModel):
@@ -117,6 +118,7 @@ def get_settings():
     s = settings.load()
     return {
         "model": s["model"],
+        "theme": s["theme"],
         "models": [{"id": k, "label": v[0], "in": v[1], "out": v[2]} for k, v in MODELS.items()],
         "has_key": DEMO or bool(settings.get_api_key()),
         "recent": [f for f in s["recent"] if os.path.isdir(f)],
@@ -146,7 +148,9 @@ def delete_key():
 def post_settings(body: SettingsIn):
     if body.model and body.model not in MODELS:
         raise HTTPException(400, "Unknown model")
-    settings.save(**({"model": body.model} if body.model else {}))
+    if body.theme and body.theme not in settings.THEME_BACKGROUNDS:
+        raise HTTPException(400, "Unknown theme")
+    settings.save(**{k: v for k, v in (("model", body.model), ("theme", body.theme)) if v})
     return get_settings()
 
 
@@ -325,7 +329,10 @@ def stream():
 
 @app.get("/")
 def index():
-    return FileResponse(os.path.join(UI_DIR, "index.html"))
+    # The theme goes in the markup so a light-theme launch never paints dark first.
+    with open(os.path.join(UI_DIR, "index.html"), encoding="utf-8") as f:
+        html = f.read()
+    return HTMLResponse(html.replace('<html lang="en">', f'<html lang="en" data-theme="{settings.load()["theme"]}">', 1))
 
 
 app.mount("/ui", StaticFiles(directory=UI_DIR), name="ui")

@@ -287,6 +287,7 @@ form .btn.primary { margin-top: 8px; justify-self: stretch; padding: 12px; }
 .moment-head { grid-column: 1 / -1; font-family: var(--serif); font-size: 15px; margin: 10px 0 -4px; color: var(--muted); }
 .empty { grid-column: 1 / -1; color: var(--muted); padding: 40px; text-align: center; }
 
+.notice.update { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
 .notice { margin: 0 0 12px; padding: 9px 13px; border-radius: 9px; border: 1px solid var(--line); background: var(--panel); }
 
 /* ---------- brief ---------- */

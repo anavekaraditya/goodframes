@@ -5,6 +5,7 @@
   photocull import-scores FOLDER FILE.json   store scores written by Claude Code instead of the API
   photocull finalize FOLDER [--dry-run]      decide picks/gems and copy them out
   photocull override FOLDER ID ACTION        pick | unpick | gem | ungem | clear
+  photocull eval FOLDER --keepers FILE       compare picks with your own keepers (one filename per line)
 """
 import argparse
 import json
@@ -12,8 +13,8 @@ import os
 import sys
 
 from . import settings
-from .engine import export, pipeline, sheets
-from .engine.review import RUBRIC_VERSION, ClaudeReviewer
+from .engine import evaluate, export, pipeline, sheets
+from .engine.review import RUBRIC_VERSION, SCREEN_MODEL, ClaudeReviewer
 from .engine.store import Store
 
 
@@ -55,18 +56,23 @@ def cmd_review(args):
     key = settings.get_api_key()
     if not key:
         sys.exit("No API key: set one in the Goodframes app or export ANTHROPIC_API_KEY.")
-    model = args.model or settings.load()["model"]
-    est = pipeline.review_estimate(shoot, model)
-    print(f"Reviewing {est['photos']} photos in {est['moments']} moments (~${est['cost']})")
+    s = settings.load()
+    model = args.model or s["model"]
+    screen = None if args.single else settings.screen_model(dict(s, model=model))
+    est = pipeline.review_estimate(shoot, model, screen)
+    how = f"screened by {SCREEN_MODEL}, close calls by {model}" if screen else model
+    print(f"Reviewing {est['photos']} photos in {est['moments']} moments with {how} (~${est['cost']})")
 
     def on_event(e):
         if e["type"] == "review_done":
-            print(f"  moment {e['moment']} done (${e['spent']:.2f} so far)", flush=True)
+            close = " (close call)" if e.get("close_call") else ""
+            print(f"  moment {e['moment']} done{close} (${e['spent']:.2f} so far)", flush=True)
         elif e["type"] == "review_error":
             print(f"  ! {e['error']}", file=sys.stderr)
 
-    res = pipeline.review(shoot, ClaudeReviewer(key, model, settings.load()["effort"]), on_event)
-    print(f"Spent ${res['spent']:.2f}")
+    screener = ClaudeReviewer(key, screen, s["effort"]) if screen else None
+    res = pipeline.review(shoot, ClaudeReviewer(key, model, s["effort"]), on_event, screener=screener)
+    print(f"Spent ${res['spent']:.2f}" + (f", {res['close_calls']} close calls" if screen else ""))
 
 
 def cmd_import(args):
@@ -89,6 +95,8 @@ def cmd_import(args):
                 "reject": bool(d.get("reject")), "best": p["id"] in flagged,
                 "edit_potential": float(max(d.get("edit_potential", d["score"]), d["score"])),
                 "fixable_flaws": d.get("fixable_flaws", []), "edit_recipe": d.get("edit_recipe", ""),
+                **{k: d[k] for k in ("shoot_type", "impact", "moment", "light", "composition", "subject_focus")
+                   if k in d},
             }
     shoot.store.put_reviews(items, "claude-code", RUBRIC_VERSION)
     print(f"Imported {len(items)} reviews")
@@ -117,6 +125,18 @@ def cmd_override(args):
     print(f"#{s['id']} is now {s['status']}")
 
 
+def cmd_eval(args):
+    shoot = _shoot(args.folder, quiet=True)
+    r = evaluate.evaluate(shoot, evaluate.read_keepers(args.keepers))
+    print(f"Found {r['found']} of your {r['keepers']} keepers ({r['recall']:.0%})")
+    print(f"{r['picks']} picks: {r['extras']} extras, so {r['precision']:.0%} were your keepers")
+    print(f"Covered {r['moments_covered']} of the {r['moments_total']} moments you kept something from")
+    if r["missed"]:
+        print("Missed: " + ", ".join(r["missed"]))
+    if r["unmatched"]:
+        print("Not in this folder: " + ", ".join(r["unmatched"]))
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(prog="photocull", description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -127,6 +147,7 @@ def main(argv=None):
     r = sub.add_parser("review")
     r.add_argument("folder")
     r.add_argument("--model")
+    r.add_argument("--single", action="store_true", help="review every moment with --model, no screening")
     i = sub.add_parser("import-scores")
     i.add_argument("folder")
     i.add_argument("file")
@@ -138,9 +159,12 @@ def main(argv=None):
     o.add_argument("folder")
     o.add_argument("id", type=int)
     o.add_argument("action", choices=["pick", "unpick", "gem", "ungem", "clear"])
+    e = sub.add_parser("eval")
+    e.add_argument("folder")
+    e.add_argument("--keepers", required=True)
     args = ap.parse_args(argv)
     {"analyze": cmd_analyze, "review": cmd_review, "import-scores": cmd_import,
-     "finalize": cmd_finalize, "override": cmd_override}[args.cmd](args)
+     "finalize": cmd_finalize, "override": cmd_override, "eval": cmd_eval}[args.cmd](args)
 
 
 if __name__ == "__main__":

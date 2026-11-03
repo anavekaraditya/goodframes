@@ -70,7 +70,7 @@
     <div class="panel" id="estimate" hidden>
       <div class="est-text" id="est-text"></div>
       <div class="panel-actions">
-        <button class="btn primary" id="start-review">Review with Claude</button>
+        <button class="btn primary" id="start-review">Set up the cull</button>
         <button class="btn ghost" data-open="settings">Change model</button>
       </div>
     </div>
@@ -94,14 +94,49 @@
     </nav>
     <div class="topbar-actions">
       <button class="icon-btn" data-open="settings" aria-label="Settings">⚙</button>
+      <button class="btn" id="refine">Refine</button>
       <button class="btn primary" id="export">Copy to folders</button>
     </div>
   </header>
   <div class="results-body">
+    <p class="notice" id="refine-status" role="status" hidden></p>
+    <p class="notice" id="unmet" hidden></p>
     <p class="tab-intro" id="tab-intro"></p>
     <div id="grid" class="grid"></div>
   </div>
 </section>
+
+<!-- The brief: chat on one side, what will be confirmed on the other -->
+<div class="modal" id="brief" hidden role="dialog" aria-modal="true" aria-label="Brief for this cull">
+  <div class="brief">
+    <button class="icon-btn close" data-close aria-label="Close">✕</button>
+    <section class="brief-chat">
+      <h2 id="brief-heading">What do you want from this shoot?</h2>
+      <p class="hint">Claude looks at about 12 small previews from the shoot, so it can ask specific questions.</p>
+      <div class="messages" id="brief-messages" aria-live="polite"></div>
+      <p class="error" id="brief-error" role="alert"></p>
+      <form id="brief-form">
+        <label for="brief-input" class="sr-only">Your message</label>
+        <textarea id="brief-input" rows="2" maxlength="2000" placeholder="For example: a wedding, keep every frame of the parents, and I like grain"></textarea>
+        <button class="btn" id="brief-send" type="submit">Send</button>
+      </form>
+    </section>
+    <aside class="brief-card">
+      <h3 class="eyebrow">The brief</h3>
+      <dl id="brief-fields"></dl>
+      <div id="brief-style" hidden>
+        <h3 class="eyebrow">Save to my style?</h3>
+        <p class="hint">Ticked items apply to your future shoots.</p>
+        <div id="brief-suggestions"></div>
+      </div>
+      <div class="brief-confirm">
+        <p class="hint" id="brief-rerun"></p>
+        <button class="btn primary" id="brief-confirm" type="button"></button>
+        <button class="btn ghost" id="brief-standard" type="button">Use the standard cull</button>
+      </div>
+    </aside>
+  </div>
+</div>
 
 <!-- Detail -->
 <div class="modal" id="detail" hidden role="dialog" aria-modal="true" aria-label="Photo details">
@@ -136,9 +171,19 @@
     <label for="settings-model">Model</label>
     <select id="settings-model"></select>
     <p class="hint">Sonnet is quick and inexpensive. Opus has the sharpest eye and costs about twice as much.</p>
+    <div class="row"><span class="hint">Two-tier review: Haiku screens every moment, and this model takes the
+      close calls and the final edit. Usually several times cheaper.</span>
+      <button class="switch" id="two-tier-toggle" type="button" role="switch" aria-checked="true" aria-label="Two-tier review"></button></div>
     <div id="shoot-settings" hidden>
-      <label for="min-score">Pick threshold <output id="min-score-out"></output></label>
-      <input type="range" id="min-score" min="5" max="9" step="0.1">
+      <div id="selection-wrap" hidden>
+        <label for="selection-size">Selection size <output id="selection-out"></output></label>
+        <input type="range" id="selection-size" min="1" step="1">
+        <p class="hint" id="selection-hint"></p>
+      </div>
+      <div id="threshold-wrap">
+        <label for="min-score">Pick threshold <output id="min-score-out"></output></label>
+        <input type="range" id="min-score" min="5" max="9" step="0.1">
+      </div>
       <label for="gem-threshold">Hidden gem threshold <output id="gem-out"></output></label>
       <input type="range" id="gem-threshold" min="6" max="10" step="0.5">
     </div>
@@ -147,6 +192,9 @@
       <button class="btn ghost" id="replace-key">Replace key</button>
       <button class="btn ghost danger" id="remove-key">Remove key</button>
     </div>
+    <label>My style</label>
+    <p class="hint" id="style-empty">Nothing saved yet. Claude can suggest items during a brief.</p>
+    <ul class="style-list" id="style-list"></ul>
     <label>Your taste</label>
     <div class="row"><span class="hint" id="taste-count"></span>
       <button class="btn ghost" id="reset-taste">Forget</button></div>

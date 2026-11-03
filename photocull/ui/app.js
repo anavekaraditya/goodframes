@@ -2,7 +2,7 @@
 (function () {
   const $ = (s) => document.querySelector(s);
   const $$ = (s) => [...document.querySelectorAll(s)];
-  const app = { settings: null, shoot: null, estimate: null, tab: "pick", reviewing: null, spent: 0 };
+  const app = { settings: null, shoot: null, estimate: null, tab: "pick", reviewing: null, spent: 0, chatSpent: 0, brief: null, refining: false, briefBusy: false };
 
   async function api(path, opts = {}) {
     const res = await fetch(path, {
@@ -133,6 +133,8 @@
     Stage.reset();
     app.shoot = null;
     app.spent = 0;
+    app.chatSpent = 0;
+    app.refining = false;
     $("#estimate").hidden = $("#finished").hidden = true;
     $("#shoot-name").textContent = folder.split("/").filter(Boolean).pop();
     setStep("ingest");
@@ -209,22 +211,43 @@
         app.reviewing.done++;
         app.spent = e.spent;
         Stage.reviewDone(e.moment, e.photos);
-        status(`Claude reviewed ${app.reviewing.done} / ${app.reviewing.total} moments · $${e.spent.toFixed(2)}`);
+        progress(`Claude reviewed ${app.reviewing.done} / ${app.reviewing.total} moments · $${(e.spent + app.chatSpent).toFixed(2)}`);
         break;
       case "review_error":
         toast(e.error);
         break;
+      case "final_edit_start":
+        progress(`Final edit: comparing the best ${e.frames} frames`);
+        break;
+      case "final_edit_error":
+        toast(`The final edit didn't finish, so picks use review scores. ${e.error}`);
+        break;
       case "reviewed":
         app.spent = e.spent;
-        if (e.errors.length) toast(`${e.errors.length} moment(s) couldn't be reviewed: ${e.errors[0]}`);
+        if (e.errors.length) toast(`${e.errors.length} review step(s) didn't finish: ${e.errors[0]}`);
         break;
       case "state":
         app.shoot = e.state;
-        finish();
+        if (app.refining) openResults();
+        else finish();
+        break;
+      case "job_done":
+        if (app.refining && e.job === "review") {
+          app.refining = false;
+          $("#refine-status").hidden = true;
+        }
         break;
       case "error":
         toast("Something went wrong: " + e.error);
         break;
+    }
+  }
+
+  function progress(t) {
+    status(t);
+    if (app.refining) {
+      $("#refine-status").textContent = t;
+      $("#refine-status").hidden = false;
     }
   }
 
@@ -237,34 +260,164 @@
       later(t + 400, finish);
       return;
     }
-    $("#est-text").innerHTML = `<strong>${est.moments} moments to review</strong>
-      <span>${est.photos} photos · about $${est.cost.toFixed(2)} and ${est.minutes} min with ${esc(est.model_label)}</span>`;
-    $("#start-review").textContent = app.settings.has_key ? "Review with Claude" : "Add API key";
+    const heading = est.moments ? `${est.moments} moments to review` : "Final edit still to do";
+    $("#est-text").innerHTML = `<strong>${heading}</strong>
+      <span>${est.photos ? `${est.photos} photos · ` : ""}about $${est.cost.toFixed(2)} and ${est.minutes} min with ${esc(est.model_label)}</span>`;
+    $("#start-review").textContent = app.settings.has_key ? "Set up the cull" : "Add API key";
     $("#estimate").hidden = false;
+    if (app.settings.has_key) openBrief();
     gsap.fromTo("#estimate", { y: 30, opacity: 0 }, { y: 0, opacity: 1, duration: 0.5, ease: "power3.out" });
   }
 
-  $("#start-review").addEventListener("click", async () => {
-    if (!app.settings.has_key) {
-      show("onboarding");
-      return;
-    }
+  $("#start-review").addEventListener("click", () => {
+    if (app.settings.has_key) openBrief();
+    else show("onboarding");
+  });
+
+  /* ---------- the brief ---------- */
+  const FALLBACK_OPENING = "What's this shoot, and what matters most to you in it?";
+
+  async function openBrief() {
     try {
-      await api("/api/review", { body: {} });
-      $("#estimate").hidden = true;
-      setStep("review");
-      app.reviewing = { done: 0, total: app.estimate.moments };
-      status(`Claude is reviewing 0 / ${app.estimate.moments} moments`);
+      app.brief = await api("/api/brief");
     } catch (err) {
       toast(err.message);
+      return;
     }
+    app.chatSpent = app.brief.spent;
+    $("#brief-error").textContent = "";
+    $("#brief-heading").textContent = $("#results").hidden ? "What do you want from this shoot?" : "What should change?";
+    renderBrief();
+    $("#brief").hidden = false;
+    $("#brief-input").focus();
+    if (!app.brief.messages.length) sendBrief(null);
+  }
+
+  function renderMessages(pending) {
+    const b = app.brief;
+    const list = b.messages.length || !pending ? [...b.messages] : [];
+    if (!list.length && !pending) list.push({ role: "assistant", text: FALLBACK_OPENING });
+    if (pending && pending.text) list.push({ role: "user", text: pending.text });
+    const box = $("#brief-messages");
+    box.innerHTML = list.map((m) => `<div class="msg ${m.role === "user" ? "user" : ""}">${esc(m.text)}</div>`).join("")
+      + (pending ? `<div class="msg typing">Claude is thinking…</div>` : "");
+    box.scrollTop = box.scrollHeight;
+  }
+
+  function renderBrief(pending) {
+    const b = app.brief, d = b.draft, est = b.estimate;
+    renderMessages(pending);
+    const rows = [
+      ["This shoot", d.shoot], ["Keep above all", d.priorities.join(", ")], ["Don't want", d.avoid.join(", ")],
+      ["Look", d.look], ["Final count", d.target_count || "Claude's recommendation"],
+      ["Per moment", d.per_moment === "few" ? "Several frames can stay" : "The best frame"],
+      ["Technical check", d.technical_tolerance === "loose" ? "Loose: more frames reach Claude" : "Standard"],
+      ["My style", b.style.join(", ")],
+    ].filter(([, v]) => v);
+    $("#brief-fields").innerHTML = rows.map(([k, v]) => `<div><dt>${k}</dt><dd>${esc(v)}</dd></div>`).join("");
+    $("#brief-style").hidden = !b.suggestions.length;
+    $("#brief-suggestions").innerHTML = b.suggestions.map((s) =>
+      `<label><input type="checkbox" value="${esc(s)}"> <span>${esc(s)}</span></label>`).join("");
+    const work = est.moments ? `Reviews ${est.moments} moment${est.moments > 1 ? "s" : ""}${est.final_edit ? ", then the final edit" : ""}. About ${est.minutes} min with ${est.model_label}.`
+      : est.requests ? `Keeps the existing reviews and reruns only the final edit, with ${est.model_label}.` : "Nothing needs to rerun.";
+    $("#brief-rerun").textContent = work;
+    const confirm = $("#brief-confirm");
+    confirm.textContent = est.requests ? `Confirm and start · about $${est.cost.toFixed(2)}` : "Confirm · no cost";
+    confirm.disabled = app.briefBusy;
+    $("#brief-send").disabled = $("#brief-standard").disabled = app.briefBusy;
+  }
+
+  async function sendBrief(text) {
+    app.briefBusy = true;
+    $("#brief-error").textContent = "";
+    renderBrief({ text });
+    try {
+      app.brief = await api(text ? "/api/brief/message" : "/api/brief/open", { body: text ? { text } : {} });
+      app.chatSpent = app.brief.spent;
+    } catch (err) {
+      $("#brief-error").textContent = text ? `Your message wasn't sent: ${err.message}` : err.message;
+      if (text) $("#brief-input").value = text;
+    }
+    app.briefBusy = false;
+    renderBrief();
+  }
+
+  $("#brief-form").addEventListener("submit", (e) => {
+    e.preventDefault();
+    const text = $("#brief-input").value.trim();
+    if (!text || app.briefBusy) return;
+    $("#brief-input").value = "";
+    sendBrief(text);
+  });
+  $("#brief-input").addEventListener("keydown", (e) => {
+    e.stopPropagation();
+    if (e.key === "Escape") $("#brief").hidden = true;
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      $("#brief-form").requestSubmit();
+    }
+  });
+
+  $("#brief-standard").addEventListener("click", async () => {
+    try {
+      app.brief = await api("/api/brief/standard", { body: {} });
+      renderBrief();
+    } catch (err) {
+      $("#brief-error").textContent = err.message;
+    }
+  });
+
+  /* Confirming is the only thing that starts a cull. */
+  $("#brief-confirm").addEventListener("click", async () => {
+    const onResults = !$("#results").hidden;
+    const before = app.shoot.photos.filter((p) => p.status === "rejected").length;
+    let res;
+    try {
+      res = await api("/api/review", { body: {
+        brief_version: app.brief.version, expected_cost: app.brief.estimate.cost,
+        save_style: $$("#brief-suggestions input:checked").map((i) => i.value),
+      } });
+    } catch (err) {
+      $("#brief-error").textContent = err.message;
+      app.brief = await api("/api/brief").catch(() => app.brief);
+      renderBrief();
+      return;
+    }
+    $("#brief").hidden = true;
+    app.shoot = res.state;
+    if (onResults) {
+      if (res.started) {
+        app.refining = true;
+        app.reviewing = { done: 0, total: res.estimate.moments };
+        progress("Applying your correction…");
+      } else {
+        await openResults();
+      }
+      return;
+    }
+    $("#estimate").hidden = true;
+    setStep("review");
+    if (!res.started) {
+      const t = Stage.applyAll(app.shoot);
+      later(t + 400, finish);
+      return;
+    }
+    if (res.state.photos.filter((p) => p.status === "rejected").length !== before) Stage.toClusters(res.state);
+    app.reviewing = { done: 0, total: res.estimate.moments };
+    status(`Claude is reviewing 0 / ${res.estimate.moments} moments`);
+  });
+
+  $("#refine").addEventListener("click", () => {
+    if (app.refining) return;
+    if (app.settings.has_key) openBrief();
+    else show("onboarding");
   });
 
   function finish() {
     setStep("done");
     const c = app.shoot.counts;
     const t = Stage.finale(app.shoot);
-    status(app.spent ? `Done · $${app.spent.toFixed(2)}` : "Done");
+    status(app.spent + app.chatSpent ? `Done · $${(app.spent + app.chatSpent).toFixed(2)}` : "Done");
     later(t + 200, () => {
       $("#finished-text").innerHTML = `<strong>${c.pick} picks${c.gem ? ` and ${c.gem} hidden gem${c.gem > 1 ? "s" : ""}` : ""}</strong>
         <span>from ${app.shoot.photos.length} photos</span>`;
@@ -279,7 +432,7 @@
 
   /* ---------- results ---------- */
   const INTRO = {
-    pick: "The best frame of each moment, as shot. Ranked by Claude's score.",
+    pick: "The final edit, strongest first. Adjust the selection size in Settings.",
     gem: "Frames with strong bones that an edit will bring to life. Each comes with a recipe.",
     moments: "Every moment of the shoot, with all its candidates.",
     rejected: "Frames that failed the technical check or Claude's review. Nothing here was deleted.",
@@ -307,6 +460,9 @@
       b.setAttribute("aria-selected", b.dataset.tab === app.tab);
     });
     $("#tab-intro").textContent = INTRO[app.tab];
+    const unmet = app.shoot.unmet || [];
+    $("#unmet").hidden = !unmet.length;
+    $("#unmet").textContent = unmet.length ? `No frame found for: ${unmet.join(", ")}` : "";
     const ps = app.shoot.photos;
     let html = "";
     if (app.tab === "moments") {
@@ -320,8 +476,8 @@
     } else {
       let list = ps.filter((p) => p.status === app.tab);
       list.sort((a, b) => app.tab === "gem" ? (b.edit_potential || 0) - (a.edit_potential || 0)
-        : app.tab === "pick" ? (b.final || 0) - (a.final || 0) : a.id - b.id);
-      html = list.map(tile).join("") || `<div class="empty">${app.tab === "pick" ? "No picks yet. Run the review, or lower the pick threshold in Settings." : "Nothing here."}</div>`;
+        : app.tab === "pick" ? (a.rank || Infinity) - (b.rank || Infinity) || (b.final || 0) - (a.final || 0) : a.id - b.id);
+      html = list.map(tile).join("") || `<div class="empty">${app.tab === "pick" ? "No picks yet. Run the review, or change the selection in Settings." : "Nothing here."}</div>`;
     }
     $("#grid").innerHTML = html;
   }
@@ -391,14 +547,19 @@
     badge.textContent = LABEL[p.status] || p.status;
     $("#detail-title").textContent = p.file;
     $("#detail-reason").textContent = p.status === "rejected" ? p.why : (p.reason || p.why || "Not reviewed yet");
-    const rows = [["Claude", p.score], ["After edit", p.edit_potential], ["Technical", p.technical], ["Final", p.final]]
+    const sub = p.subscores || {};
+    const rows = [["Claude", p.score], ["After edit", p.edit_potential], ["Impact", sub.impact], ["Moment", sub.moment],
+      ["Light", sub.light], ["Composition", sub.composition], ["Subject focus", sub.subject_focus],
+      ["Technical", p.technical], ["Final", p.final]]
       .filter(([, v]) => v != null)
       .map(([k, v]) => `<dt>${k}</dt><dd>${(+v).toFixed(1)}</dd>`).join("");
-    $("#detail-scores").innerHTML = rows + `<dt>Taken</dt><dd>${time(p.taken)}</dd>`;
+    const rank = p.rank ? `<dt>Final edit</dt><dd>#${p.rank}</dd>` : "";
+    $("#detail-scores").innerHTML = rank + rows + `<dt>Taken</dt><dd>${time(p.taken)}</dd>`;
     const recipe = $("#detail-recipe");
     recipe.hidden = !p.edit_recipe;
     recipe.innerHTML = p.edit_recipe ? `<b>Edit recipe</b>${esc(p.edit_recipe)}` : "";
-    $("#detail-notes").textContent = p.notes.length ? "Technical: " + p.notes.join(" · ") : "";
+    const cut = p.status === "below" && p.why ? `Why it was left out: ${p.why}. ` : "";
+    $("#detail-notes").textContent = cut + (p.notes.length ? "Technical: " + p.notes.join(" · ") : "");
     $("#detail-actions").innerHTML = `
       <button class="btn ${p.status === "pick" ? "primary" : ""}" data-act="pick">${p.status === "pick" ? "✓ Picked" : "Pick"}</button>
       <button class="btn ${p.status === "gem" ? "primary" : ""}" data-act="gem" style="${p.status === "gem" ? "background:var(--gem);border-color:var(--gem)" : ""}">◆ ${p.status === "gem" ? "Hidden gem" : "Mark as gem"}</button>`;
@@ -463,22 +624,61 @@
     app.settings = await api("/api/settings");
     applyTheme(app.settings.theme);
     fillModelSelects();
+    renderStyle();
+    $("#two-tier-toggle").setAttribute("aria-checked", String(app.settings.two_tier));
     $("#taste-count").textContent = app.settings.taste_count
       ? `Learned from ${app.settings.taste_count} of your choices` : "Nothing learned yet";
     const shootOpen = !!app.shoot && !$("#results").hidden;
     $("#shoot-settings").hidden = !shootOpen;
     if (shootOpen && app.shootSettings) {
       $("#min-score").value = app.shootSettings.min_score;
+      syncSelection();
       $("#gem-threshold").value = app.shootSettings.gem_threshold;
       syncOutputs();
     }
     $("#settings").hidden = false;
   }
 
+  function renderStyle() {
+    const style = app.settings.style || [];
+    $("#style-empty").hidden = !!style.length;
+    $("#style-list").innerHTML = style.map((s) => `<li><span>${esc(s)}</span>
+      <button class="btn ghost" data-forget="${esc(s)}" aria-label="Forget ${esc(s)}">Forget</button></li>`).join("");
+  }
+
+  $("#style-list").addEventListener("click", async (e) => {
+    const b = e.target.closest("[data-forget]");
+    if (!b) return;
+    const { style } = await api("/api/style/forget", { body: { item: b.dataset.forget } });
+    app.settings.style = style;
+    renderStyle();
+  });
+
+  function syncSelection() {
+    const sel = app.shoot && app.shoot.selection;
+    $("#selection-wrap").hidden = !sel;
+    $("#threshold-wrap").hidden = !!sel;
+    if (!sel) return;
+    $("#selection-size").max = sel.total;
+    $("#selection-size").value = sel.size;
+    $("#selection-hint").textContent = `Claude recommends ${sel.recommended} of the ${sel.total} strongest frames. Changing this costs nothing.`;
+    $("#selection-out").textContent = sel.size;
+  }
+
   function syncOutputs() {
     $("#min-score-out").textContent = (+$("#min-score").value).toFixed(1);
     $("#gem-out").textContent = (+$("#gem-threshold").value).toFixed(1);
   }
+
+  $("#two-tier-toggle").addEventListener("click", async () => {
+    try {
+      app.settings = await api("/api/settings", { body: { two_tier: !app.settings.two_tier } });
+      $("#two-tier-toggle").setAttribute("aria-checked", String(app.settings.two_tier));
+      toast(app.settings.two_tier ? "Two-tier review on for new reviews" : "Every moment reviewed by the chosen model");
+    } catch (err) {
+      toast("Couldn't save the setting");
+    }
+  });
 
   function applyTheme(theme) {
     document.documentElement.dataset.theme = theme;
@@ -502,12 +702,16 @@
   });
 
   let sliderTimer;
-  ["#min-score", "#gem-threshold"].forEach((sel) =>
+  ["#selection-size", "#min-score", "#gem-threshold"].forEach((sel) =>
     $(sel).addEventListener("input", () => {
       syncOutputs();
+      $("#selection-out").textContent = $("#selection-size").value;
       clearTimeout(sliderTimer);
       sliderTimer = setTimeout(async () => {
         const body = { min_score: +$("#min-score").value, gem_threshold: +$("#gem-threshold").value };
+        const selection = app.shoot.selection;
+        // Back at Claude's number means following its recommendation again.
+        if (selection) body.selection_size = +$("#selection-size").value === selection.recommended ? 0 : +$("#selection-size").value;
         app.shootSettings = { ...app.shootSettings, ...body };
         app.shoot = (await api("/api/shoot-settings", { body })).state;
         renderResults();

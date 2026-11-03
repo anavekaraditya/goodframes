@@ -9,6 +9,8 @@ import numpy as np
 import pytest
 from PIL import Image, ImageDraw, ImageEnhance, ImageFilter
 
+from photocull.engine.review import ReviewError
+
 FIXTURES = os.path.join(os.path.dirname(__file__), "fixtures")
 
 
@@ -100,13 +102,26 @@ class FakeReviewer:
     """Stands in for ClaudeReviewer: scores by filename rules and counts calls."""
     model = "fake-model"
 
-    def __init__(self, rules=None):
+    def __init__(self, rules=None, model=None):
+        if model:
+            self.model = model
         self.calls = 0
         self.finals = 0
         self.rules = rules or {}
+        self.final_edits = 0
+        self.keep_count = None  # None keeps every finalist
+        self.fail_final_edit = False
+        self.fail_reviews = False
+        self.unmet = []
+        self.review_briefs = []
+        self.edit_briefs = []
+        self.chat = {}  # fields of the chat's next reply
 
-    def review(self, photos, read_thumb, taste_notes="", final_round=False):
+    def review(self, photos, read_thumb, taste_notes="", final_round=False, read_crop=None, brief_notes=""):
+        if self.fail_reviews:
+            raise ReviewError("review failed")
         self.calls += 1
+        self.review_briefs.append(brief_notes)
         self.finals += final_round
         results = {}
         for p in photos:
@@ -118,4 +133,19 @@ class FakeReviewer:
             results[p["id"]] = r
         best = max(results.values(), key=lambda r: r["score"])
         return results, ([best["id"]] if best["score"] >= 6 else []), \
+            {"input": 1000, "cache_write": 0, "cache_read": 0, "output": 100}
+
+    def final_edit(self, photos, read_preview, taste_notes="", brief_notes=""):
+        self.final_edits += 1
+        self.edit_briefs.append(brief_notes)
+        if self.fail_final_edit:
+            raise ReviewError("final edit failed")
+        ranked = sorted(photos, key=lambda p: -p["final"])
+        return [(p["id"], f"cut #{p['id']}") for p in ranked], self.keep_count or len(ranked), self.unmet, \
+            {"input": 1000, "cache_write": 0, "cache_read": 0, "output": 100}
+
+    def brief_chat(self, messages, sample, context):
+        return {"reply": "Noted.", "shoot": "", "priorities": [], "avoid": [], "look": "", "target_count": 0,
+                "per_moment": "one", "technical_tolerance": "standard", "rerun": "full_review",
+                "style_suggestions": [], **self.chat}, \
             {"input": 1000, "cache_write": 0, "cache_read": 0, "output": 100}

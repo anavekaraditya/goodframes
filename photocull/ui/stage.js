@@ -179,6 +179,8 @@
       const p = state.photos.find((q) => q.fp === c.fp);
       return p && p.status === "rejected";
     });
+    S.order.forEach((c) => { if (!rejected.includes(c)) c.el.classList.remove("rejected"); });  // a looser brief brings frames back
+    setCount("discard-count", 0);
     const tDiscard = discard(rejected);
     buildClusters(state);
     S.phase = "clusters";
@@ -245,7 +247,7 @@
     S.phase = "final";
     S.rail.classList.add("shown");
     const b = box(), r = S.rail.getBoundingClientRect();
-    const picks = S.order.filter((c) => c.status === "pick").sort((a, b2) => (b2.p.final || 0) - (a.p.final || 0));
+    const picks = S.order.filter((c) => c.status === "pick").sort((a, b2) => (a.p.rank || Infinity) - (b2.p.rank || Infinity) || (b2.p.final || 0) - (a.p.final || 0));
     const gems = S.order.filter((c) => c.status === "gem");
     const h = 52, pickW = r.width * 0.72, gemX = r.left - b.left + r.width * 0.78;
     const step = (n, w) => Math.min(h * 1.6, (w - h * 1.5) / Math.max(n - 1, 1));

@@ -6,10 +6,14 @@ import time
 MAX_EXAMPLES = 10
 
 
-def _path():
+def _home():
     base = os.environ.get("PHOTOCULL_HOME") or os.path.expanduser("~/Library/Application Support/PhotoCull")
     os.makedirs(base, exist_ok=True)
-    return os.path.join(base, "taste.json")
+    return base
+
+
+def _path():
+    return os.path.join(_home(), "taste.json")
 
 
 def load():
@@ -34,6 +38,25 @@ def record(action, review, notes):
 def reset():
     with open(_path(), "w") as f:
         json.dump([], f)
+
+
+def load_style():
+    """Lasting preferences the photographer approved in a brief; they apply to future shoots."""
+    try:
+        with open(os.path.join(_home(), "style.json")) as f:
+            return json.load(f)
+    except (OSError, ValueError):
+        return []
+
+
+def save_style(items):
+    with open(os.path.join(_home(), "style.json"), "w") as f:
+        json.dump(items, f)
+
+
+def add_style(items):
+    style = load_style()
+    save_style(style + [i for i in items if i not in style])
 
 
 _VERB = {"pick": "picked a frame you scored", "unpick": "rejected a frame you picked and scored",

@@ -190,6 +190,11 @@
         }
         app.shoot = e.state;
         app.estimate = e.estimate;
+        // A shoot that was culled before opens on its saved results; reviewing again is the user's choice.
+        if (reviewed(e.state)) {
+          openResults();
+          return;
+        }
         const rejects = e.state.counts.rejected;
         later(Stage.settleMs(), () => {
           setStep("technical");
@@ -274,8 +279,13 @@
     else show("onboarding");
   });
 
+  function reviewed(state) {
+    return state.photos.some((p) => p.score != null);
+  }
+
   /* ---------- the brief ---------- */
   const FALLBACK_OPENING = "What's this shoot, and what matters most to you in it?";
+  const FALLBACK_CORRECTION = "What should change in this cull?";
 
   async function openBrief() {
     try {
@@ -290,13 +300,14 @@
     renderBrief();
     $("#brief").hidden = false;
     $("#brief-input").focus();
-    if (!app.brief.messages.length) sendBrief(null);
+    // Claude's opening question is a paid request: ask it only before a shoot's first cull.
+    if (!app.brief.messages.length && !reviewed(app.shoot)) sendBrief(null);
   }
 
   function renderMessages(pending) {
     const b = app.brief;
     const list = b.messages.length || !pending ? [...b.messages] : [];
-    if (!list.length && !pending) list.push({ role: "assistant", text: FALLBACK_OPENING });
+    if (!list.length && !pending) list.push({ role: "assistant", text: reviewed(app.shoot) ? FALLBACK_CORRECTION : FALLBACK_OPENING });
     if (pending && pending.text) list.push({ role: "user", text: pending.text });
     const box = $("#brief-messages");
     box.innerHTML = list.map((m) => `<div class="msg ${m.role === "user" ? "user" : ""}">${esc(m.text)}</div>`).join("")
@@ -407,6 +418,11 @@
     status(`Claude is reviewing 0 / ${res.estimate.moments} moments`);
   });
 
+  $("#update-review").addEventListener("click", () => {
+    if (app.settings.has_key) openBrief();
+    else show("onboarding");
+  });
+
   $("#refine").addEventListener("click", () => {
     if (app.refining) return;
     if (app.settings.has_key) openBrief();
@@ -441,6 +457,7 @@
   async function openResults() {
     const data = await api("/api/shoot");
     app.shoot = data.state;
+    app.estimate = data.estimate;
     app.shootSettings = data.settings;
     $("#results-name").textContent = app.shoot.name;
     renderResults();
@@ -460,6 +477,13 @@
       b.setAttribute("aria-selected", b.dataset.tab === app.tab);
     });
     $("#tab-intro").textContent = INTRO[app.tab];
+    const est = app.estimate;
+    $("#update-notice").hidden = app.refining || !est || !est.requests;
+    if (est && est.requests) {
+      $("#update-text").textContent = est.moments
+        ? `${est.moments} moment${est.moments > 1 ? "s were" : " was"} reviewed by an earlier version, or not at all. Showing your saved results.`
+        : "The final edit for this shoot isn't finished. Showing picks from review scores.";
+    }
     const unmet = app.shoot.unmet || [];
     $("#unmet").hidden = !unmet.length;
     $("#unmet").textContent = unmet.length ? `No frame found for: ${unmet.join(", ")}` : "";

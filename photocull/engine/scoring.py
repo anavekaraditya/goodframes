@@ -3,6 +3,14 @@ import statistics
 
 import numpy as np
 
+MAX_PER_BURST = 4          # frames of one burst sent for review: the main control on review cost
+LOOSE_PER_BURST = 8        # the same limit when the brief asks for a loose technical pass
+LOOSE_EXTREMES = 3         # extreme frames per burst that reach review under a loose pass
+MIN_SHARP_IN_BURST = 0.3   # sharpness relative to the burst's sharpest below which a frame is dropped
+SOFT_RATIO = 0.6           # relative sharpness below which a frame starts losing points
+UNUSABLE_DARK = 6          # mean luma below which a frame holds nothing to judge
+UNUSABLE_CLIPPED = 0.85    # share of clipped pixels above which a frame holds nothing to judge
+
 
 def _pctl(values, q, default):
     values = [v for v in values if v]
@@ -74,19 +82,30 @@ def score(photos, groups, genre="auto"):
         if m["noise_sigma"] > 10:
             notes.append("noisy")
 
-        reject = None
-        # Absolute floor only: shoot-relative sharpness is skewed by high-detail scenes
-        # (a daylight frame can score 20x a perfectly usable high-ISO dusk portrait).
-        # Softer frames still lose to sharper near-duplicates and are judged visually.
-        if m["sharpness"] < 40:
-            reject = "severely blurred / missed focus"
-        elif m["clip_hi"] > 0.35:
+        # Only the unusable is rejected unseen. Other extremes may be intentional (a silhouette,
+        # high key, motion blur), so they go to the aesthetic pass with a note.
+        reject = extreme = None
+        if m["mean_luma"] < UNUSABLE_DARK:
+            reject = "almost entirely black"
+        elif m["clip_hi"] > UNUSABLE_CLIPPED:
             reject = f"blown highlights ({m['clip_hi']:.0%} of frame clipped)"
+        elif m["sharpness"] < 40:
+            extreme = "extremely soft: missed focus, or deliberate motion blur?"
+        elif m["clip_hi"] > 0.35:
+            extreme = f"{m['clip_hi']:.0%} of frame clipped: blown, or deliberate high key?"
         elif m["mean_luma"] < 20:
-            reject = "far too dark"
+            extreme = "very dark: underexposed, or deliberate low key or silhouette?"
+        if extreme:
+            notes.append(extreme)
+        # Softness only costs points against a sharper near-duplicate; a lone soft frame is
+        # judged by eye, since across scenes the numbers mostly measure lighting and texture.
+        rel = face_sharp(p) / group_face[g] if faces else sharp_in_group
+        p["focus_penalty"] = round(min(1.0, max(0.0, 1 - rel / SOFT_RATIO)), 2)
+        p["sharp_in_group"] = sharp_in_group
         p["technical"] = round(max(tech, 0.0), 3)
         p["notes"] = notes
         p["reject"] = reject
+        p["extreme"] = bool(extreme)
 
 
 def _why_weaker(p, best):
@@ -101,23 +120,58 @@ def _why_weaker(p, best):
     return f"near-duplicate of #{best['id']}, slightly weaker"
 
 
-def select_in_groups(photos, groups, twin_margin=0.04):
-    """Mark each photo 'candidate' or 'rejected'; keep the best 1-2 frames of each burst."""
+def _fewest_eyes(p):
+    return min((f["eyes_found"] for f in p["metrics"]["faces"]), default=None)
+
+
+def _spread(items, n):
+    """n items evenly spaced through a time-ordered list, so a burst's whole arc gets seen."""
+    if len(items) <= n:
+        return items
+    if n == 1:
+        return items[:1]
+    return [items[round(k * (len(items) - 1) / (n - 1))] for k in range(n)]
+
+
+def select_in_groups(photos, groups, tolerance="standard"):
+    """Mark each photo 'candidate' or 'rejected', leaving the choice of expression to the review.
+
+    Keeps up to MAX_PER_BURST frames across each burst, dropping only clear failures: much
+    softer than the burst's sharpest frame, or eyes closed where a sibling has them open.
+    tolerance "loose" (from the photographer's brief) keeps more frames and no longer treats
+    softness or a missing eye as a failure, since those can be exactly what they want to see.
+    """
+    loose = tolerance == "loose"
+    per_burst, max_extremes = (LOOSE_PER_BURST, LOOSE_EXTREMES) if loose else (MAX_PER_BURST, 1)
     for gi, members in enumerate(groups, 1):
-        ms = [photos[i] for i in members]
+        ms = [photos[i] for i in sorted(members)]
         for p in ms:
             p["group"] = gi
-        alive = sorted((p for p in ms if not p["reject"]), key=lambda p: -p["technical"])
-        for p in ms:
             if p["reject"]:
                 p["status"] = "rejected"
+        alive = [p for p in ms if not p["reject"]]
         if not alive:
             continue
-        best = alive[0]
-        best["status"] = "candidate"
-        for p in alive[1:]:
-            if p is alive[1] and best["technical"] - p["technical"] <= twin_margin:
-                p["status"] = "candidate"  # too close to call: let the aesthetic pass decide
+        best = max(alive, key=lambda p: p["technical"])
+        eyes = [e for e in map(_fewest_eyes, alive) if e is not None]
+        most_eyes = max(eyes, default=None)
+
+        def clear_failure(p):
+            if loose:
+                return False
+            closed = most_eyes is not None and _fewest_eyes(p) is not None and _fewest_eyes(p) < most_eyes
+            return closed or p["sharp_in_group"] < MIN_SHARP_IN_BURST
+
+        extremes = sorted((p for p in alive if p["extreme"]), key=lambda p: -p["technical"])[:max_extremes]
+        normal = [p for p in alive if not p["extreme"] and (p is best or not clear_failure(p))]
+        keep = _spread(normal, per_burst - len(extremes))
+        if best in normal and best not in keep:  # always show Claude the technically best frame
+            nearest = min(keep, key=lambda p: abs(ms.index(p) - ms.index(best)))
+            keep[keep.index(nearest)] = best
+        keep += extremes
+        for p in alive:
+            if p in keep:
+                p["status"] = "candidate"
             else:
                 p["status"] = "rejected"
                 p["reject"] = _why_weaker(p, best)

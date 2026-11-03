@@ -8,7 +8,8 @@ GEMS_DIR = os.path.join("Goodframes", "Hidden Gems")
 
 def _ranked(shoot, status):
     ps = [p for p in shoot.photos if p["status"] == status]
-    key = (lambda p: -(p["final"] or 0)) if status == "pick" else \
+    # Picks follow the final edit's order; frames you added yourself come after it, by score.
+    key = (lambda p: (p.get("rank") or 10 ** 6, -(p["final"] or 0))) if status == "pick" else \
           (lambda p: -((p.get("review") or {}).get("edit_potential") or 0))
     return sorted(ps, key=key)
 

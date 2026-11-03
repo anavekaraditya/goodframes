@@ -287,6 +287,40 @@ form .btn.primary { margin-top: 8px; justify-self: stretch; padding: 12px; }
 .moment-head { grid-column: 1 / -1; font-family: var(--serif); font-size: 15px; margin: 10px 0 -4px; color: var(--muted); }
 .empty { grid-column: 1 / -1; color: var(--muted); padding: 40px; text-align: center; }
 
+.notice { margin: 0 0 12px; padding: 9px 13px; border-radius: 9px; border: 1px solid var(--line); background: var(--panel); }
+
+/* ---------- brief ---------- */
+.brief {
+  position: relative; width: min(980px, 100%); height: min(680px, 100%); display: grid;
+  grid-template-columns: 1fr 340px; background: var(--bg-2); border: 1px solid var(--line);
+  border-radius: 16px; overflow: hidden;
+}
+.brief-chat { display: flex; flex-direction: column; gap: 6px; padding: 22px 20px 16px; min-height: 0; }
+.brief-chat h2 { font-size: 22px; padding-right: 30px; }
+.messages { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 10px; padding: 12px 0;
+  user-select: text; -webkit-user-select: text; }
+.msg { max-width: 85%; padding: 9px 13px; border-radius: 13px; white-space: pre-wrap; overflow-wrap: anywhere; background: var(--panel); }
+.msg.user { align-self: flex-end; background: var(--pick); color: var(--on-pick); }
+.msg.typing { color: var(--muted); }
+#brief-form { display: flex; gap: 8px; align-items: flex-end; }
+#brief-form .btn { margin: 0; padding: 9px 18px; justify-self: auto; }
+textarea {
+  flex: 1; resize: none; padding: 10px 13px; border-radius: 9px; border: 1px solid var(--line);
+  background: var(--bg); font: inherit; color: inherit; user-select: text; -webkit-user-select: text;
+}
+.brief-card { display: flex; flex-direction: column; gap: 10px; padding: 22px 20px 16px; border-left: 1px solid var(--line);
+  background: var(--panel); overflow-y: auto; user-select: text; -webkit-user-select: text; }
+#brief-fields { margin: 0; display: grid; gap: 8px; }
+#brief-fields dt { color: var(--muted); font-size: 12px; }
+#brief-fields dd { margin: 0; overflow-wrap: anywhere; }
+#brief-suggestions label { display: flex; gap: 8px; align-items: flex-start; margin: 6px 0 0; font-size: 13px; font-weight: 400;
+  color: var(--text); text-transform: none; letter-spacing: 0; }
+.brief-confirm { margin-top: auto; display: grid; gap: 8px; padding-top: 10px; }
+.brief-confirm .btn { white-space: normal; }
+.style-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; }
+.style-list li { display: flex; justify-content: space-between; align-items: center; gap: 8px; font-size: 13px; }
+.sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); margin: 0; }
+
 /* ---------- modals ---------- */
 .modal { position: fixed; inset: 0; z-index: 50; background: var(--overlay); backdrop-filter: blur(8px);
   display: flex; align-items: center; justify-content: center; padding: 24px; }
@@ -345,6 +379,8 @@ output { color: var(--text); font-weight: 600; text-transform: none; letter-spac
 }
 
 @media (max-width: 760px) {
+  .brief { grid-template-columns: 1fr; grid-template-rows: minmax(0, 1fr) auto; }
+  .brief-card { border-left: 0; border-top: 1px solid var(--line); max-height: 42vh; }
   .steps, .status { display: none; }
   .detail { grid-template-columns: 1fr; grid-template-rows: 1fr auto; }
   .detail-side { max-height: 42vh; }
@@ -356,3 +392,5 @@ output { color: var(--text); font-weight: 600; text-transform: none; letter-spac
 }
 #finished { bottom: 118px; }
 .detail-side .badge { align-self: flex-start; }
+#shoot-settings label { display: block; }
+#shoot-settings .hint { margin-bottom: 4px; }

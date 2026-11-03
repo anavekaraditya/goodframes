@@ -18,8 +18,8 @@ from PIL import Image, ImageOps
 from pydantic import BaseModel
 
 from .. import settings
-from ..engine import export, pipeline, taste
-from ..engine.review import MODELS, ClaudeReviewer, ReviewError, validate_key
+from ..engine import brief, export, pipeline, taste
+from ..engine.review import MODELS, SCREEN_MODEL, ClaudeReviewer, ReviewError, validate_key
 from ..engine.store import Store
 
 UI_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), "ui")
@@ -88,13 +88,41 @@ def _need_shoot():
     return Session.shoot
 
 
-def _estimate(shoot):
-    model = settings.load()["model"]
-    est = pipeline.review_estimate(shoot, model)
+def _describe(est, s):
+    model = s["model"]
     est["model"] = model
     est["model_label"] = MODELS[model][0]
+    if est["two_tier"]:
+        est["model_label"] = f"{MODELS[SCREEN_MODEL][0]}, and {MODELS[model][0]} for close calls"
     est["minutes"] = max(1, round(est["requests"] * 12 / 4 / 60))
     return est
+
+
+def _estimate(shoot):
+    s = settings.load()
+    return _describe(pipeline.review_estimate(shoot, s["model"], settings.screen_model(s)), s)
+
+
+def _reviewer():
+    s = settings.load()
+    if DEMO:
+        from .demo import DemoReviewer
+        return DemoReviewer()
+    key = settings.get_api_key()
+    if not key:
+        raise HTTPException(400, "Add your Claude API key first.")
+    return ClaudeReviewer(key, s["model"], s["effort"])
+
+
+def _screener():
+    """The first-pass reviewer of a two-tier review, or None."""
+    s = settings.load()
+    if not settings.screen_model(s):
+        return None
+    if DEMO:
+        from .demo import DemoReviewer
+        return DemoReviewer()
+    return ClaudeReviewer(settings.get_api_key(), SCREEN_MODEL, s["effort"])
 
 
 # ---------- settings ----------
@@ -106,10 +134,12 @@ class KeyIn(BaseModel):
 class SettingsIn(BaseModel):
     model: str | None = None
     theme: str | None = None
+    two_tier: bool | None = None
 
 
 class ShootSettingsIn(BaseModel):
     min_score: float | None = None
+    selection_size: int | None = None
     gem_threshold: float | None = None
 
 
@@ -119,10 +149,12 @@ def get_settings():
     return {
         "model": s["model"],
         "theme": s["theme"],
+        "two_tier": s["two_tier"],
         "models": [{"id": k, "label": v[0], "in": v[1], "out": v[2]} for k, v in MODELS.items()],
         "has_key": DEMO or bool(settings.get_api_key()),
         "recent": [f for f in s["recent"] if os.path.isdir(f)],
         "taste_count": len(taste.load()),
+        "style": taste.load_style(),
         "desktop": app.state.pick_folder is not None,
     }
 
@@ -150,7 +182,7 @@ def post_settings(body: SettingsIn):
         raise HTTPException(400, "Unknown model")
     if body.theme and body.theme not in settings.THEME_BACKGROUNDS:
         raise HTTPException(400, "Unknown theme")
-    settings.save(**{k: v for k, v in (("model", body.model), ("theme", body.theme)) if v})
+    settings.save(**{k: v for k, v in body.model_dump().items() if v is not None})
     return get_settings()
 
 
@@ -158,6 +190,16 @@ def post_settings(body: SettingsIn):
 def reset_taste():
     taste.reset()
     return {"ok": True}
+
+
+class StyleItemIn(BaseModel):
+    item: str
+
+
+@app.post("/api/style/forget")
+def forget_style(body: StyleItemIn):
+    taste.save_style([s for s in taste.load_style() if s != body.item])
+    return {"style": taste.load_style()}
 
 
 # ---------- shoots ----------
@@ -198,25 +240,100 @@ def get_shoot():
             "settings": dict(pipeline.DEFAULT_SETTINGS, **shoot.store.get_meta("settings", {}))}
 
 
-@app.post("/api/review")
-def start_review():
-    shoot = _need_shoot()
-    key = settings.get_api_key()
+# ---------- the brief ----------
+
+class BriefMessageIn(BaseModel):
+    text: str
+
+
+def _draft_estimate(shoot):
     s = settings.load()
-    if DEMO:
-        from .demo import DemoReviewer
-        reviewer = DemoReviewer()
-    elif not key:
-        raise HTTPException(400, "Add your Claude API key first.")
-    else:
-        reviewer = ClaudeReviewer(key, s["model"], s["effort"])
+    return _describe(pipeline.brief_estimate(shoot, s["model"], settings.screen_model(s)), s)
+
+
+def _brief_view(shoot):
+    state = brief.load(shoot.store)
+    return {"messages": state["messages"], "draft": state["draft"], "version": state["version"],
+            "suggestions": state["suggestions"], "spent": state["spent"], "confirmed": bool(state["applied"]),
+            "style": state["applied"]["style"] if state["applied"] else taste.load_style(),
+            "estimate": _draft_estimate(shoot)}
+
+
+def _chat_turn(shoot, text=None):
+    reviewer = _reviewer()
+    with Session.lock:
+        if Session.job:
+            raise HTTPException(409, f"Busy: {Session.job} is still running.")
+        Session.job = "chat"
+    try:
+        pipeline.brief_turn(shoot, reviewer, text)
+    except ReviewError as e:
+        raise HTTPException(502, str(e))
+    except (ValueError, KeyError, StopIteration):
+        raise HTTPException(502, "Claude's reply couldn't be read. Try again.")
+    finally:
+        Session.job = None
+    return _brief_view(shoot)
+
+
+@app.get("/api/brief")
+def get_brief():
+    return _brief_view(_need_shoot())
+
+
+@app.post("/api/brief/open")
+def open_brief():
+    """Claude's opening question. Does nothing if the conversation has already started."""
+    shoot = _need_shoot()
+    if brief.load(shoot.store)["messages"]:
+        return _brief_view(shoot)
+    return _chat_turn(shoot)
+
+
+@app.post("/api/brief/message")
+def brief_message(body: BriefMessageIn):
+    text = body.text.strip()
+    if not text:
+        raise HTTPException(400, "Type a message first.")
+    return _chat_turn(_need_shoot(), text[:brief.MAX_MESSAGE_CHARS])
+
+
+@app.post("/api/brief/standard")
+def brief_standard():
+    shoot = _need_shoot()
+    pipeline.standard_brief(shoot)
+    return _brief_view(shoot)
+
+
+class ReviewIn(BaseModel):
+    brief_version: int | None = None
+    expected_cost: float | None = None
+    save_style: list[str] = []
+
+
+@app.post("/api/review")
+def start_review(body: ReviewIn):
+    """The only way a cull starts: the photographer confirmed this exact brief at this cost."""
+    shoot = _need_shoot()
+    if Session.job:
+        raise HTTPException(409, f"Busy: {Session.job} is still running.")
+    if body.brief_version is None or body.brief_version != brief.load(shoot.store)["version"]:
+        raise HTTPException(409, "The brief changed. Check it and confirm again.")
+    est = _draft_estimate(shoot)
+    if body.expected_cost is None or abs(body.expected_cost - est["cost"]) > 0.005:
+        raise HTTPException(409, "The cost changed. Check it and confirm again.")
+    reviewer = _reviewer() if est["requests"] else None
+    screener = _screener() if est["requests"] else None
+    pipeline.confirm_brief(shoot, body.save_style)
+    if not est["requests"]:
+        return {"started": False, "state": pipeline.state(shoot), "estimate": est}
 
     def job():
-        pipeline.review(shoot, reviewer, on_event=events.publish)
+        pipeline.review(shoot, reviewer, on_event=events.publish, screener=screener)
         events.publish({"type": "state", "state": pipeline.state(shoot)})
 
     _start_job("review", job)
-    return {"ok": True}
+    return {"started": True, "state": pipeline.state(shoot), "estimate": est}
 
 
 class OverrideIn(BaseModel):

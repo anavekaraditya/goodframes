@@ -68,3 +68,60 @@ def prompt_notes():
     for it in load()[-MAX_EXAMPLES:]:
         lines.append(f"- They {_VERB[it['action']]} {it['score']}: \"{it['reason']}\"")
     return "\n".join(lines)
+
+
+# The profile from first-run setup: what they shoot and how they like an edit. It reaches Claude
+# with their saved style, so it shapes every shoot's brief and review.
+GENRES = {"weddings": "Weddings", "portraits": "Portraits", "events": "Events", "family": "Family",
+          "sports": "Sports", "wildlife": "Wildlife", "street": "Street", "travel": "Travel",
+          "landscape": "Landscape", "products": "Products"}
+LOOKS = {
+    "candid": "Prefers candid moments over posed shots",
+    "posed": "Prefers clean posed shots over candids",
+    "grain_ok": "Grain and motion blur are fine when the moment is strong",
+    "sharp": "Sharpness matters: soft frames rarely make the cut",
+    "moody": "Likes moody, darker light",
+    "airy": "Likes bright, airy light",
+    "emotion": "Expression and emotion come before composition",
+    "composition": "Composition and light come before expression",
+}
+KEEP = {"tight": "Wants a tight edit: only the strongest frames",
+        "balanced": "",
+        "generous": "Wants a generous edit: keep strong alternates too"}
+PROFILE = {"name": "", "genres": [], "look": [], "keep": "balanced", "done": False}
+
+
+def load_profile():
+    try:
+        with open(os.path.join(_home(), "profile.json")) as f:
+            return dict(PROFILE, **json.load(f))
+    except (OSError, ValueError):
+        return dict(PROFILE)
+
+
+def save_profile(data):
+    profile = {
+        "name": str(data.get("name") or "").strip()[:40],
+        "genres": [g for g in GENRES if g in (data.get("genres") or [])],
+        "look": [k for k in LOOKS if k in (data.get("look") or [])],
+        "keep": data.get("keep") if data.get("keep") in KEEP else "balanced",
+        "done": True,
+    }
+    with open(os.path.join(_home(), "profile.json"), "w") as f:
+        json.dump(profile, f)
+    return profile
+
+
+def profile_lines(profile):
+    lines = []
+    if profile["genres"]:
+        lines.append("Mostly shoots " + ", ".join(GENRES[g].lower() for g in profile["genres"]))
+    lines += [LOOKS[k] for k in profile["look"]]
+    if KEEP[profile["keep"]]:
+        lines.append(KEEP[profile["keep"]])
+    return lines
+
+
+def lasting():
+    """Everything Claude should know about the photographer beyond this shoot."""
+    return profile_lines(load_profile()) + load_style()

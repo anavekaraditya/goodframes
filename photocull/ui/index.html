@@ -7,24 +7,101 @@
 <link rel="stylesheet" href="/ui/styles.css">
 </head>
 <body>
+<!-- Goodframes icons, in the spirit of SF Symbols: 24px grid, 1.9 stroke, round ends. Bodies fill and details cut out
+     when the icon's control is selected (see --ifill / --iknock in styles.css). Use with <svg class="i"><use href="#i-name"/></svg>. -->
+<svg xmlns="http://www.w3.org/2000/svg" style="display:none">
+  <symbol id="i-back" viewBox="0 0 24 24"><path d="M15 4.5L7.5 12l7.5 7.5"/></symbol>
+  <symbol id="i-close" viewBox="0 0 24 24"><path d="M6.5 6.5l11 11M17.5 6.5l-11 11"/></symbol>
+  <symbol id="i-settings" viewBox="0 0 24 24"><path d="M10.27 4.80 L10.75 2.68 A9.4 9.4 0 0 1 13.25 2.68 L13.73 4.80 A7.4 7.4 0 0 1 15.87 5.69 L15.87 5.69 L17.70 4.53 A9.4 9.4 0 0 1 19.47 6.30 L18.31 8.13 A7.4 7.4 0 0 1 19.20 10.27 L19.20 10.27 L21.32 10.75 A9.4 9.4 0 0 1 21.32 13.25 L19.20 13.73 A7.4 7.4 0 0 1 18.31 15.87 L18.31 15.87 L19.47 17.70 A9.4 9.4 0 0 1 17.70 19.47 L15.87 18.31 A7.4 7.4 0 0 1 13.73 19.20 L13.73 19.20 L13.25 21.32 A9.4 9.4 0 0 1 10.75 21.32 L10.27 19.20 A7.4 7.4 0 0 1 8.13 18.31 L8.13 18.31 L6.30 19.47 A9.4 9.4 0 0 1 4.53 17.70 L5.69 15.87 A7.4 7.4 0 0 1 4.80 13.73 L4.80 13.73 L2.68 13.25 A9.4 9.4 0 0 1 2.68 10.75 L4.80 10.27 A7.4 7.4 0 0 1 5.69 8.13 L5.69 8.13 L4.53 6.30 A9.4 9.4 0 0 1 6.30 4.53 L8.13 5.69 A7.4 7.4 0 0 1 10.27 4.80Z" style="fill:var(--ifill,none)"/><circle cx="12" cy="12" r="3" style="stroke:var(--iknock,currentColor)"/></symbol>
+  <symbol id="i-folder-add" viewBox="0 0 24 24"><path d="M3 7a2 2 0 0 1 2-2h3.8a1.5 1.5 0 0 1 1.1.5L11.5 7.5H19a2 2 0 0 1 2 2V17a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" style="fill:var(--ifill,none)"/><path d="M12 10.5v5.5M9.25 13.25h5.5" style="stroke:var(--iknock,currentColor)"/></symbol>
+  <symbol id="i-pick" viewBox="0 0 24 24"><path d="M5 12.8l4.4 4.4L19 7"/></symbol>
+  <symbol id="i-gem" viewBox="0 0 24 24"><path d="M7.3 4h9.4l4.3 5.3L12 20.5 3 9.3z" style="fill:var(--ifill,none)"/><path d="M3 9.3h18M12 20.5L8.6 9.3 10.4 4M12 20.5l3.4-11.2L13.6 4" style="stroke:var(--iknock,currentColor)"/></symbol>
+  <symbol id="i-profile" viewBox="0 0 24 24"><circle cx="12" cy="7.8" r="3.8" style="fill:var(--ifill,none)"/><path d="M4.5 20.5c0-4.1 3.4-6.6 7.5-6.6s7.5 2.5 7.5 6.6z" style="fill:var(--ifill,none)"/></symbol>
+  <symbol id="i-culling" viewBox="0 0 24 24"><path d="M8.5 3.5h9.5a2 2 0 0 1 2 2V15"/><rect x="4" y="7.5" width="12.5" height="13" rx="2" style="fill:var(--ifill,none)"/><path d="M7.4 14.1l2.3 2.3 3.6-4" style="stroke:var(--iknock,currentColor)"/></symbol>
+  <symbol id="i-style" viewBox="0 0 24 24"><path d="M10.5 4.5l1.5 4.2c.2.6.7 1.1 1.3 1.3l4.2 1.5-4.2 1.5c-.6.2-1.1.7-1.3 1.3l-1.5 4.2-1.5-4.2a2.2 2.2 0 0 0-1.3-1.3L4 11.5 8.2 10c.6-.2 1.1-.7 1.3-1.3z" style="fill:var(--ifill,none)"/><path d="M18 3v4M16 5h4M18.5 16v3M17 17.5h3"/></symbol>
+  <symbol id="i-appearance" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M12 3.5a8.5 8.5 0 0 1 0 17z" fill="currentColor" stroke="none"/></symbol>
+  <symbol id="i-key" viewBox="0 0 24 24"><circle cx="7.8" cy="15.7" r="4.3" style="fill:var(--ifill,none)"/><circle cx="6.8" cy="16.7" r=".9" style="fill:var(--iknock,currentColor);stroke:none"/><path d="M10.9 12.6L19.5 4M16.3 7.2l2.6 2.6M13.8 9.7l1.8 1.8"/></symbol>
+  <symbol id="i-refine" viewBox="0 0 24 24"><path d="M4 6.5A2.5 2.5 0 0 1 6.5 4h11A2.5 2.5 0 0 1 20 6.5v7.5a2.5 2.5 0 0 1-2.5 2.5h-7L6 20.3v-3.8A2.5 2.5 0 0 1 4 14z" style="fill:var(--ifill,none)"/><path d="M8.5 9h7M8.5 12h4.5" style="stroke:var(--iknock,currentColor)"/></symbol>
+  <symbol id="i-export" viewBox="0 0 24 24"><path d="M12 3.5v10M8 9.8l4 3.9 4-3.9"/><path d="M4.5 14v3.5a2.5 2.5 0 0 0 2.5 2.5h10a2.5 2.5 0 0 0 2.5-2.5V14"/></symbol>
+  <symbol id="i-send" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9" style="fill:var(--ifill,none)"/><path d="M12 16.5v-9M8.3 11L12 7.3l3.7 3.7" style="stroke:var(--iknock,currentColor)"/></symbol>
+  <symbol id="i-refresh" viewBox="0 0 24 24"><path d="M19.5 12a7.5 7.5 0 1 1-2.2-5.3"/><path d="M19.8 4v4.8H15"/></symbol>
+  <symbol id="i-redo" viewBox="0 0 24 24"><path d="M4.5 12a7.5 7.5 0 1 0 2.2-5.3"/><path d="M4.2 4v4.8H9"/></symbol>
+  <symbol id="i-weddings" viewBox="0 0 24 24"><circle cx="9" cy="14.5" r="5.2"/><circle cx="15" cy="14.5" r="5.2"/><path d="M10.4 5.4L12 3.5l1.6 1.9L12 7.5z" style="fill:var(--ifill,none)"/></symbol>
+  <symbol id="i-portraits" viewBox="0 0 24 24"><rect x="3.5" y="3.5" width="17" height="17" rx="4" style="fill:var(--ifill,none)"/><circle cx="12" cy="10" r="3" style="stroke:var(--iknock,currentColor)"/><path d="M6.8 18.5c.8-2.6 2.8-4 5.2-4s4.4 1.4 5.2 4" style="stroke:var(--iknock,currentColor)"/></symbol>
+  <symbol id="i-events" viewBox="0 0 24 24"><rect x="3.5" y="5" width="17" height="15.5" rx="3" style="fill:var(--ifill,none)"/><path d="M8 3v3.5M16 3v3.5"/><path d="M3.5 10h17" style="stroke:var(--iknock,currentColor)"/><path d="M12 12.5l.9 1.9 2 .3-1.5 1.4.4 2-1.8-1-1.8 1 .4-2-1.5-1.4 2-.3z" style="stroke:var(--iknock,currentColor)"/></symbol>
+  <symbol id="i-family" viewBox="0 0 24 24"><circle cx="7" cy="7.5" r="2.6" style="fill:var(--ifill,none)"/><circle cx="17" cy="7.5" r="2.6" style="fill:var(--ifill,none)"/><circle cx="12" cy="12.5" r="2.1" style="fill:var(--ifill,none)"/><path d="M2.5 18.5c0-3 2-4.9 4.5-4.9 1 0 1.8.3 2.5.8M21.5 18.5c0-3-2-4.9-4.5-4.9-1 0-1.8.3-2.5.8"/><path d="M8 20.5c0-2.3 1.8-3.8 4-3.8s4 1.5 4 3.8z" style="fill:var(--ifill,none)"/></symbol>
+  <symbol id="i-sports" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.8" style="fill:var(--ifill,none)"/><path d="M3.2 12h17.6M12 3.2c2.4 2.4 3.6 5.3 3.6 8.8s-1.2 6.4-3.6 8.8M12 3.2C9.6 5.6 8.4 8.5 8.4 12s1.2 6.4 3.6 8.8" style="stroke:var(--iknock,currentColor)"/></symbol>
+  <symbol id="i-wildlife" viewBox="0 0 24 24"><path d="M3 13.5c3 0 5.3-2 6.6-5 .9-2.1 2.5-3.3 4.4-3.3 2.1 0 3.6 1.5 3.6 3.6l2.9 1.2-2.9.9c-.6 4.3-3.8 7.1-8.1 7.1H5.5l2.4-2.4c-2.4 0-4-.8-4.9-2.1z" style="fill:var(--ifill,none)"/><circle cx="14.9" cy="8.7" r=".8" style="fill:var(--iknock,currentColor);stroke:none"/></symbol>
+  <symbol id="i-street" viewBox="0 0 24 24"><path d="M3 20.5h18"/><path d="M5 20.5V10l5-2.5v13z" style="fill:var(--ifill,none)"/><path d="M10 20.5V4.5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v16z" style="fill:var(--ifill,none)"/><path d="M16 20.5V11h3a1 1 0 0 1 1 1v8.5z" style="fill:var(--ifill,none)"/><path d="M12.4 7.5h1.2M12.4 11h1.2M12.4 14.5h1.2" style="stroke:var(--iknock,currentColor)"/></symbol>
+  <symbol id="i-travel" viewBox="0 0 24 24"><path d="M21 3L3.5 10.2l7 3.3 3.3 7z" style="fill:var(--ifill,none)"/><path d="M10.5 13.5L21 3" style="stroke:var(--iknock,currentColor)"/></symbol>
+  <symbol id="i-landscape" viewBox="0 0 24 24"><path d="M2.5 19.5l6.5-9.6 4.2 6.2 2.7-3.7 5.6 7.1z" style="fill:var(--ifill,none)"/><circle cx="16.5" cy="6.5" r="2.2" style="fill:var(--ifill,none)"/></symbol>
+  <symbol id="i-products" viewBox="0 0 24 24"><path d="M12 2.8l8.2 4.6v9.2L12 21.2l-8.2-4.6V7.4z" style="fill:var(--ifill,none)"/><path d="M3.8 7.4L12 12l8.2-4.6M12 12v9.2" style="stroke:var(--iknock,currentColor)"/></symbol>
+  <symbol id="i-candid" viewBox="0 0 24 24"><path d="M3 9.5a2 2 0 0 1 2-2h2.3l1.2-2h5l1.2 2H17a2 2 0 0 1 2 2V17a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" style="fill:var(--ifill,none)"/><circle cx="11" cy="13" r="3" style="stroke:var(--iknock,currentColor)"/><path d="M21 3.5v4M19 5.5h4"/></symbol>
+  <symbol id="i-posed" viewBox="0 0 24 24"><circle cx="12" cy="4.6" r="2.2" style="fill:var(--ifill,none)"/><path d="M9.6 8.3h4.8a1.6 1.6 0 0 1 1.6 1.4l.7 5.3h-2.3l-.6 6.5h-3.6l-.6-6.5H7.3l.7-5.3a1.6 1.6 0 0 1 1.6-1.4z" style="fill:var(--ifill,none)"/></symbol>
+  <symbol id="i-grain_ok" viewBox="0 0 24 24"><rect x="4.5" y="2.8" width="15" height="18.4" rx="2.5" style="fill:var(--ifill,none)"/><path d="M8.5 2.8v18.4M15.5 2.8v18.4M4.5 7.5h4M4.5 12h4M4.5 16.5h4M15.5 7.5h4M15.5 12h4M15.5 16.5h4" style="stroke:var(--iknock,currentColor)"/></symbol>
+  <symbol id="i-sharp" viewBox="0 0 24 24"><path d="M3.5 8V6a2.5 2.5 0 0 1 2.5-2.5h2M16 3.5h2A2.5 2.5 0 0 1 20.5 6v2M20.5 16v2a2.5 2.5 0 0 1-2.5 2.5h-2M8 20.5H6A2.5 2.5 0 0 1 3.5 18v-2"/><circle cx="12" cy="12" r="3.2" style="fill:var(--ifill,none)"/></symbol>
+  <symbol id="i-moody" viewBox="0 0 24 24"><path d="M20 14.6A8.2 8.2 0 1 1 9.4 4a6.6 6.6 0 0 0 10.6 10.6z" style="fill:var(--ifill,none)"/></symbol>
+  <symbol id="i-airy" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4" style="fill:var(--ifill,none)"/><path d="M12 2.5v2M12 19.5v2M2.5 12h2M19.5 12h2M5.3 5.3l1.4 1.4M17.3 17.3l1.4 1.4M5.3 18.7l1.4-1.4M17.3 6.7l1.4-1.4"/></symbol>
+  <symbol id="i-emotion" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.8" style="fill:var(--ifill,none)"/><path d="M8.2 13.6c.9 1.7 2.2 2.6 3.8 2.6s2.9-.9 3.8-2.6" style="stroke:var(--iknock,currentColor)"/><circle cx="9" cy="9.6" r="1" style="fill:var(--iknock,currentColor);stroke:none"/><circle cx="15" cy="9.6" r="1" style="fill:var(--iknock,currentColor);stroke:none"/></symbol>
+  <symbol id="i-composition" viewBox="0 0 24 24"><rect x="3.2" y="3.2" width="17.6" height="17.6" rx="3" style="fill:var(--ifill,none)"/><path d="M9.1 3.2v17.6M14.9 3.2v17.6M3.2 9.1h17.6M3.2 14.9h17.6" style="stroke:var(--iknock,currentColor)"/></symbol>
+  <symbol id="i-tight" viewBox="0 0 24 24"><circle cx="6" cy="6.3" r="2.8" style="fill:var(--ifill,none)"/><circle cx="6" cy="17.7" r="2.8" style="fill:var(--ifill,none)"/><path d="M8.4 7.8L20.5 16.6M8.4 16.2L20.5 7.4"/></symbol>
+  <symbol id="i-balanced" viewBox="0 0 24 24"><path d="M12 3.5v16.5M8 20h8M4.8 6.5h14.4"/><path d="M4.8 6.5l-2.6 6.3h5.2z" style="fill:var(--ifill,none)"/><path d="M19.2 6.5l-2.6 6.3h5.2z" style="fill:var(--ifill,none)"/><path d="M2.2 12.8a2.6 2.6 0 0 0 5.2 0M16.6 12.8a2.6 2.6 0 0 0 5.2 0"/></symbol>
+  <symbol id="i-generous" viewBox="0 0 24 24"><path d="M10.5 6V4.5a1.5 1.5 0 0 1 1.5-1.5h7a1.5 1.5 0 0 1 1.5 1.5v7a1.5 1.5 0 0 1-1.5 1.5h-1.5"/><path d="M7 9.5V8a1.5 1.5 0 0 1 1.5-1.5h7.5A1.5 1.5 0 0 1 17.5 8v7.5a1.5 1.5 0 0 1-1.5 1.5h-2"/><rect x="3.5" y="10" width="10.5" height="10.5" rx="2" style="fill:var(--ifill,none)"/></symbol>
+</svg>
 
-<!-- Onboarding: API key -->
+<!-- Onboarding: a short profile setup, then the API key -->
 <section id="onboarding" class="screen" hidden>
-  <div class="onboard-card">
-    <div class="mark" aria-hidden="true"><span></span><span></span><span></span></div>
-    <h1>Goodframes</h1>
-    <p class="lede">From three hundred frames to the ones worth editing.</p>
-    <form id="key-form" autocomplete="off">
-      <label for="key-input">Your Claude API key</label>
-      <input id="key-input" type="password" placeholder="sk-ant-..." spellcheck="false" required>
-      <p class="hint">Stored in your Mac's Keychain. Only small preview images of your photos are
-        sent to Claude, never the originals.
-        <a href="#" data-url="https://console.anthropic.com/settings/keys">Get a key</a></p>
-      <label for="model-select">Model</label>
-      <select id="model-select"></select>
-      <p class="error" id="key-error" role="alert"></p>
-      <button class="btn primary" type="submit">Continue</button>
-    </form>
+  <div class="ob">
+    <div class="ob-top">
+      <ol class="ob-dots" id="ob-dots" aria-hidden="true"></ol>
+      <button class="btn ghost" id="ob-skip" type="button">Skip setup</button>
+    </div>
+    <div class="ob-stage">
+      <div class="ob-step" data-step="name" hidden>
+        <div class="mark big" aria-hidden="true"><span></span><span></span><span></span></div>
+        <h1>Hi, I'm Goodframes.</h1>
+        <p class="lede">I turn three hundred frames into the few worth editing. Four quick questions and I'll cull the way you do.</p>
+        <label for="ob-name">What should I call you?</label>
+        <input id="ob-name" class="big-input" placeholder="Your first name" maxlength="40" autocomplete="given-name">
+      </div>
+      <div class="ob-step" data-step="genres" hidden>
+        <h1>What do you love to shoot?</h1>
+        <p class="lede">Pick as many as you like.</p>
+        <div class="chips" data-kind="genres"></div>
+      </div>
+      <div class="ob-step" data-step="look" hidden>
+        <h1>This or that?</h1>
+        <p class="lede">Tap whichever sounds more like you. Not sure? Leave the pair blank.</p>
+        <div class="pairs" data-kind="look"></div>
+      </div>
+      <div class="ob-step" data-step="keep" hidden>
+        <h1>How picky are you?</h1>
+        <p class="lede">Thirty frames of the same moment. How many make your edit?</p>
+        <div class="keeps" data-kind="keep"></div>
+      </div>
+      <div class="ob-step" data-step="key" hidden>
+        <h1>Last thing: connect Claude</h1>
+        <p class="lede">Claude does the looking. Your key stays in your Mac's Keychain, and only small previews are sent,
+          never the originals. <a href="#" data-url="https://console.anthropic.com/settings/keys">Get a key</a></p>
+        <form id="key-form" autocomplete="off">
+          <label for="key-input">Claude API key</label>
+          <input id="key-input" type="password" placeholder="sk-ant-..." spellcheck="false" required>
+          <label for="model-select">Model</label>
+          <select id="model-select"></select>
+          <p class="error" id="key-error" role="alert"></p>
+        </form>
+      </div>
+      <div class="ob-step" data-step="done" hidden>
+        <div class="confetti" id="ob-confetti" aria-hidden="true"></div>
+        <div class="mark big" aria-hidden="true"><span></span><span></span><span></span></div>
+        <h1 id="ob-done-title">You're all set</h1>
+        <p class="lede" id="ob-done-text"></p>
+      </div>
+    </div>
+    <div class="ob-nav">
+      <button class="btn ghost" id="ob-back" type="button">Back</button>
+      <button class="btn primary" id="ob-next" type="button">Next</button>
+    </div>
   </div>
 </section>
 
@@ -32,20 +109,26 @@
 <section id="home" class="screen" hidden>
   <header class="topbar">
     <div class="brand"><div class="mark small" aria-hidden="true"><span></span><span></span><span></span></div>Goodframes</div>
-    <button class="icon-btn" data-open="settings" aria-label="Settings"><svg class="i" viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="2.2"/><path d="M8 1.8v1.6M8 12.6v1.6M1.8 8h1.6M12.6 8h1.6M3.6 3.6l1.1 1.1M11.3 11.3l1.1 1.1M3.6 12.4l1.1-1.1M11.3 4.7l1.1-1.1"/></svg></button>
+    <button class="icon-btn" data-open="settings" aria-label="Settings" title="Settings"><svg class="i" aria-hidden="true"><use href="#i-settings"/></svg></button>
   </header>
   <div class="home-body">
-    <button id="choose-folder" class="dropzone">
-      <span class="dz-title">Choose a shoot</span>
-      <span class="dz-sub">A folder of JPEG or HEIC photos. Originals are never moved or changed.</span>
-    </button>
-    <form id="path-form" class="path-form" hidden>
-      <input id="path-input" placeholder="/Users/you/Pictures/Shoot" spellcheck="false">
-      <button class="btn">Open</button>
-    </form>
+    <div class="home-hero">
+      <p class="home-hello" id="home-hello" hidden></p>
+      <h1 class="home-title">Find the frames worth keeping.</h1>
+      <p class="home-sub">Goodframes sorts a shoot into picks and hidden gems. Your originals are never moved or changed.</p>
+      <button id="choose-folder" class="dropzone">
+        <span class="dz-icon"><svg class="i" aria-hidden="true"><use href="#i-folder-add"/></svg></span>
+        <span class="dz-text"><span class="dz-title">Choose a shoot</span>
+          <span class="dz-sub">A folder of JPEG or HEIC photos</span></span>
+      </button>
+      <form id="path-form" class="path-form" hidden>
+        <input id="path-input" placeholder="/Users/you/Pictures/Shoot" spellcheck="false">
+        <button class="btn">Open</button>
+      </form>
+    </div>
     <div id="recent-wrap" hidden>
-      <h2 class="eyebrow">Recent</h2>
-      <ul id="recent"></ul>
+      <h2 class="eyebrow">Recent shoots</h2>
+      <ul id="recent" class="shoots"></ul>
     </div>
   </div>
 </section>
@@ -53,7 +136,7 @@
 <!-- The sort: animated stage -->
 <section id="stage-screen" class="screen" hidden>
   <header class="topbar">
-    <button class="icon-btn" id="stage-back" aria-label="Back"><svg class="i" viewBox="0 0 16 16" aria-hidden="true"><path d="M10 3L5 8l5 5"/></svg></button>
+    <button class="icon-btn" id="stage-back" aria-label="Back"><svg class="i" aria-hidden="true"><use href="#i-back"/></svg></button>
     <div class="shoot-name" id="shoot-name"></div>
     <ol class="steps" id="steps">
       <li data-step="ingest">Read</li><li data-step="technical">Check</li>
@@ -84,7 +167,7 @@
 <!-- Results -->
 <section id="results" class="screen" hidden>
   <header class="topbar">
-    <button class="icon-btn" id="results-back" aria-label="Back to home"><svg class="i" viewBox="0 0 16 16" aria-hidden="true"><path d="M10 3L5 8l5 5"/></svg></button>
+    <button class="icon-btn" id="results-back" aria-label="Back to home"><svg class="i" aria-hidden="true"><use href="#i-back"/></svg></button>
     <div class="shoot-name" id="results-name"></div>
     <nav class="tabs" role="tablist" id="tabs">
       <button role="tab" data-tab="pick" aria-selected="true">Picks <b></b></button>
@@ -93,9 +176,9 @@
       <button role="tab" data-tab="rejected">Rejects <b></b></button>
     </nav>
     <div class="topbar-actions">
-      <button class="icon-btn" data-open="settings" aria-label="Settings"><svg class="i" viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="2.2"/><path d="M8 1.8v1.6M8 12.6v1.6M1.8 8h1.6M12.6 8h1.6M3.6 3.6l1.1 1.1M11.3 11.3l1.1 1.1M3.6 12.4l1.1-1.1M11.3 4.7l1.1-1.1"/></svg></button>
-      <button class="btn" id="refine">Refine</button>
-      <button class="btn primary" id="export">Copy to folders</button>
+      <button class="icon-btn" data-open="settings" aria-label="Settings" title="Settings"><svg class="i" aria-hidden="true"><use href="#i-settings"/></svg></button>
+      <button class="btn" id="refine"><svg class="i" aria-hidden="true"><use href="#i-refine"/></svg>Refine</button>
+      <button class="btn primary" id="export"><svg class="i" aria-hidden="true"><use href="#i-export"/></svg>Copy to folders</button>
     </div>
   </header>
   <div class="results-body">
@@ -103,7 +186,7 @@
     <p class="notice" id="unmet" hidden></p>
     <div class="notice update" id="update-notice" hidden>
       <span id="update-text"></span>
-      <button class="btn" id="update-review" type="button">Review again</button>
+      <button class="btn" id="update-review" type="button"><svg class="i" aria-hidden="true"><use href="#i-refresh"/></svg>Review again</button>
     </div>
     <p class="tab-intro" id="tab-intro"></p>
     <div id="grid" class="grid"></div>
@@ -113,7 +196,7 @@
 <!-- The brief: chat on one side, what will be confirmed on the other -->
 <div class="modal" id="brief" hidden role="dialog" aria-modal="true" aria-label="Brief for this cull">
   <div class="brief">
-    <button class="icon-btn close" data-close aria-label="Close"><svg class="i" viewBox="0 0 16 16" aria-hidden="true"><path d="M4 4l8 8M12 4l-8 8"/></svg></button>
+    <button class="icon-btn close" data-close aria-label="Close"><svg class="i" aria-hidden="true"><use href="#i-close"/></svg></button>
     <section class="brief-chat">
       <h2 id="brief-heading">What do you want from this shoot?</h2>
       <p class="hint">Claude looks at about 12 small previews from the shoot, so it can ask specific questions.</p>
@@ -122,7 +205,7 @@
       <form id="brief-form">
         <label for="brief-input" class="sr-only">Your message</label>
         <textarea id="brief-input" rows="2" maxlength="2000" placeholder="For example: a wedding, keep every frame of the parents, and I like grain"></textarea>
-        <button class="btn" id="brief-send" type="submit">Send</button>
+        <button class="btn" id="brief-send" type="submit"><svg class="i" aria-hidden="true"><use href="#i-send"/></svg>Send</button>
       </form>
     </section>
     <aside class="brief-card">
@@ -145,7 +228,7 @@
 <!-- Detail -->
 <div class="modal" id="detail" hidden role="dialog" aria-modal="true" aria-label="Photo details">
   <div class="detail">
-    <button class="icon-btn close" data-close aria-label="Close"><svg class="i" viewBox="0 0 16 16" aria-hidden="true"><path d="M4 4l8 8M12 4l-8 8"/></svg></button>
+    <button class="icon-btn close" data-close aria-label="Close"><svg class="i" aria-hidden="true"><use href="#i-close"/></svg></button>
     <div class="detail-main">
       <img id="detail-img" alt="">
       <figure class="crop"><img id="detail-crop" alt="100% crop"><figcaption>100% focus check</figcaption></figure>
@@ -166,42 +249,94 @@
 
 <!-- Settings -->
 <div class="modal" id="settings" hidden role="dialog" aria-modal="true" aria-label="Settings">
-  <div class="sheet">
-    <button class="icon-btn close" data-close aria-label="Close"><svg class="i" viewBox="0 0 16 16" aria-hidden="true"><path d="M4 4l8 8M12 4l-8 8"/></svg></button>
-    <h2>Settings</h2>
-    <label>Appearance</label>
-    <div class="row"><span class="hint">Dark theme</span>
-      <button class="switch" id="theme-toggle" type="button" role="switch" aria-checked="true" aria-label="Dark theme"></button></div>
-    <label for="settings-model">Model</label>
-    <select id="settings-model"></select>
-    <p class="hint">Sonnet is quick and inexpensive. Opus has the sharpest eye and costs about twice as much.</p>
-    <div class="row"><span class="hint">Two-tier review: Haiku screens every moment, and this model takes the
-      close calls and the final edit. Usually several times cheaper.</span>
-      <button class="switch" id="two-tier-toggle" type="button" role="switch" aria-checked="true" aria-label="Two-tier review"></button></div>
-    <div id="shoot-settings" hidden>
-      <div id="selection-wrap" hidden>
-        <label for="selection-size">Selection size <output id="selection-out"></output></label>
-        <input type="range" id="selection-size" min="1" step="1">
-        <p class="hint" id="selection-hint"></p>
-      </div>
-      <div id="threshold-wrap">
-        <label for="min-score">Pick threshold <output id="min-score-out"></output></label>
-        <input type="range" id="min-score" min="5" max="9" step="0.1">
-      </div>
-      <label for="gem-threshold">Hidden gem threshold <output id="gem-out"></output></label>
-      <input type="range" id="gem-threshold" min="6" max="10" step="0.5">
+  <div class="prefs">
+    <button class="icon-btn close" data-close aria-label="Close"><svg class="i" aria-hidden="true"><use href="#i-close"/></svg></button>
+    <nav class="prefs-nav" role="tablist" aria-label="Settings sections">
+      <h2>Settings</h2>
+      <button role="tab" data-pane="profile" aria-selected="true"><svg class="i" aria-hidden="true"><use href="#i-profile"/></svg>Profile</button>
+      <button role="tab" data-pane="culling" aria-selected="false"><svg class="i" aria-hidden="true"><use href="#i-culling"/></svg>Culling</button>
+      <button role="tab" data-pane="style" aria-selected="false"><svg class="i" aria-hidden="true"><use href="#i-style"/></svg>Style &amp; taste</button>
+      <button role="tab" data-pane="appearance" aria-selected="false"><svg class="i" aria-hidden="true"><use href="#i-appearance"/></svg>Appearance</button>
+      <button role="tab" data-pane="account" aria-selected="false"><svg class="i" aria-hidden="true"><use href="#i-key"/></svg>API key</button>
+    </nav>
+    <div class="prefs-body">
+      <section class="pane" data-pane="profile" role="tabpanel">
+        <div class="profile-head">
+          <div class="avatar" id="pf-avatar" aria-hidden="true"></div>
+          <div><h3 id="pf-title"></h3><p class="hint" id="pf-summary"></p></div>
+        </div>
+        <label for="pf-name">Name</label>
+        <input id="pf-name" maxlength="40" placeholder="Your first name">
+        <label>What you shoot</label>
+        <div class="chips small" data-kind="genres"></div>
+        <label>Your eye</label>
+        <div class="pairs small" data-kind="look"></div>
+        <label>How picky</label>
+        <div class="keeps small" data-kind="keep"></div>
+        <p class="hint">Changes save as you go and apply to your next brief.</p>
+        <div><button class="btn" id="pf-redo" type="button"><svg class="i" aria-hidden="true"><use href="#i-redo"/></svg>Redo the fun setup</button></div>
+      </section>
+      <section class="pane" data-pane="culling" role="tabpanel" hidden>
+        <h3>Culling</h3>
+        <label for="settings-model">Model</label>
+        <select id="settings-model"></select>
+        <p class="hint">Sonnet is quick and inexpensive. Opus has the sharpest eye and costs about twice as much.</p>
+        <div class="row setting">
+          <div><b>Two-tier review</b><p class="hint">Haiku screens every moment, and your model takes the close calls and
+            the final edit. Usually several times cheaper.</p></div>
+          <button class="switch" id="two-tier-toggle" type="button" role="switch" aria-checked="true" aria-label="Two-tier review"></button>
+        </div>
+        <div id="shoot-settings" hidden>
+          <h3>This shoot</h3>
+          <div id="selection-wrap" hidden>
+            <label for="selection-size">Selection size <output id="selection-out"></output></label>
+            <input type="range" id="selection-size" min="1" step="1">
+            <p class="hint" id="selection-hint"></p>
+          </div>
+          <div id="threshold-wrap">
+            <label for="min-score">Pick threshold <output id="min-score-out"></output></label>
+            <input type="range" id="min-score" min="5" max="9" step="0.1">
+          </div>
+          <label for="gem-threshold">Hidden gem threshold <output id="gem-out"></output></label>
+          <input type="range" id="gem-threshold" min="6" max="10" step="0.5">
+        </div>
+      </section>
+      <section class="pane" data-pane="style" role="tabpanel" hidden>
+        <h3>My style</h3>
+        <p class="hint">Lasting preferences you approved during a brief. They apply to every shoot.</p>
+        <p class="hint empty-note" id="style-empty">Nothing saved yet. Claude suggests items while you chat about a shoot.</p>
+        <ul class="style-list" id="style-list"></ul>
+        <h3>Your taste</h3>
+        <div class="row setting">
+          <div><b id="taste-count"></b><p class="hint">Goodframes learns from the picks you change and passes a few examples to Claude.</p></div>
+          <button class="btn" id="reset-taste" type="button">Forget</button>
+        </div>
+      </section>
+      <section class="pane" data-pane="appearance" role="tabpanel" hidden>
+        <h3>Appearance</h3>
+        <div class="themes" id="theme-choice">
+          <button type="button" data-theme-choice="dark" aria-pressed="true"><span class="swatch dark"></span>Dark</button>
+          <button type="button" data-theme-choice="light" aria-pressed="false"><span class="swatch light"></span>Light</button>
+        </div>
+      </section>
+      <section class="pane" data-pane="account" role="tabpanel" hidden>
+        <h3>API key</h3>
+        <p class="hint">Your Claude API key is stored in your Mac's Keychain. Only small previews of your photos are sent to Claude.</p>
+        <div class="row start">
+          <button class="btn" id="replace-key" type="button">Replace key</button>
+          <button class="btn ghost danger" id="remove-key" type="button">Remove key</button>
+        </div>
+      </section>
     </div>
-    <label>API key</label>
-    <div class="row">
-      <button class="btn ghost" id="replace-key">Replace key</button>
-      <button class="btn ghost danger" id="remove-key">Remove key</button>
-    </div>
-    <label>My style</label>
-    <p class="hint" id="style-empty">Nothing saved yet. Claude can suggest items during a brief.</p>
-    <ul class="style-list" id="style-list"></ul>
-    <label>Your taste</label>
-    <div class="row"><span class="hint" id="taste-count"></span>
-      <button class="btn ghost" id="reset-taste">Forget</button></div>
+  </div>
+</div>
+
+<!-- Opening: prints fly in and settle into the mark, once per launch -->
+<div id="intro" aria-hidden="true">
+  <div class="intro-inner">
+    <div class="intro-mark"><span></span><span></span><span></span></div>
+    <div class="intro-word">Goodframes</div>
+    <div class="intro-tag">Find the frames worth keeping.</div>
   </div>
 </div>
 

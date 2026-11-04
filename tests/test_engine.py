@@ -574,3 +574,33 @@ def test_close_call_sends_only_contenders_to_the_main_model(shoot_dir):
     assert seen and all(len(ids) <= pipeline.MAX_CONTENDERS for ids in seen)
     picks = [p for p in burst if p["status"] == "pick"]
     assert len(picks) <= 1 and all(shoot.store.reviews()[p["fp"]]["model"] == "fake-model" for p in picks)
+
+
+def test_home_card_summary_reads_without_creating_a_store(shoot_dir, tmp_path):
+    from photocull.engine.store import summary
+    fresh = str(tmp_path / "never-opened")
+    os.makedirs(fresh)
+    assert summary(fresh)["photos"] == 0 and not os.path.exists(os.path.join(fresh, ".photo-cull"))
+    shoot = _analyze(shoot_dir)
+    card = summary(shoot_dir)
+    assert card["photos"] == len(shoot.photos) and card["reviewed"] == 0 and len(card["covers"]) == 3
+    pipeline.review(shoot, FakeReviewer(), lambda e: None)
+    reviews = Store(shoot_dir).reviews()
+    best = max((fp for fp, r in reviews.items() if not r.get("reject")), key=lambda fp: reviews[fp]["score"])
+    card = summary(shoot_dir)
+    assert card["reviewed"] > 0 and card["covers"][0] == best
+
+
+def test_profile_reaches_the_brief(shoot_dir):
+    from photocull.engine import brief, taste
+    assert taste.load_profile()["done"] is False and taste.lasting() == []
+    saved = taste.save_profile({"name": " Ana ", "genres": ["portraits", "nope"], "look": ["candid", "bogus"],
+                                "keep": "tight"})
+    assert saved == {"name": "Ana", "genres": ["portraits"], "look": ["candid"], "keep": "tight", "done": True}
+    taste.add_style(["Keep the dog in frame"])
+    lasting = taste.lasting()
+    assert lasting[0] == "Mostly shoots portraits" and lasting[-1] == "Keep the dog in frame"
+    shoot = _analyze(shoot_dir)
+    pipeline.confirm_brief(shoot)
+    assert taste.LOOKS["candid"] in shoot.brief["review_prompt"]
+    assert taste.KEEP["tight"] in brief.load(shoot.store)["applied"]["edit_prompt"]

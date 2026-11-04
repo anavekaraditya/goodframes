@@ -470,7 +470,7 @@ def _brief_preview(shoot, state):
     clone = Shoot(shoot.folder, shoot.store)
     clone.photos, clone.groups, clone.moments = copy.deepcopy(shoot.photos), shoot.groups, shoot.moments
     clone.genre = shoot.genre
-    clone.brief = brief.plan(state, taste.load_style(), bool(shoot.store.reviews()))
+    clone.brief = brief.plan(state, taste.lasting(), bool(shoot.store.reviews()))
     if clone.brief["tolerance"] != shoot.brief["tolerance"]:
         _technical(clone)
     decide(clone)
@@ -495,9 +495,9 @@ def _chat_context(shoot, state):
         lines.append(f"The cull has run: {len(picks)} picks from {len(shoot.photos)} photos. They are asking for a "
                      "correction. Top picks and why:")
         lines += [f"- {p['file']}: {(p.get('review') or {}).get('reason', '')}" for p in picks[:40]]
-    style = taste.load_style()
+    style = taste.lasting()
     if style:
-        lines.append("Their saved style: " + "; ".join(style))
+        lines.append("Their profile and saved style: " + "; ".join(style))
     return "\n".join(lines)
 
 
@@ -507,7 +507,7 @@ def brief_turn(shoot, reviewer, text=None):
     messages = state["messages"] + ([{"role": "user", "text": text}] if text else [])
     sample = [shoot.read_preview(p) for p in brief_sample(shoot)]
     data, usage = reviewer.brief_chat(messages, sample, _chat_context(shoot, state))
-    saved = taste.load_style()
+    saved = taste.lasting()
     state["messages"] = messages + [{"role": "assistant", "text": data["reply"]}]
     state["draft"] = brief.normalize(data)
     state["rerun"] = data["rerun"] if data["rerun"] in brief.RERUNS else "full_review"
@@ -534,7 +534,7 @@ def confirm_brief(shoot, save_style=()):
     state = brief.load(shoot.store)
     old_target = (state["applied"] or {}).get("brief", {}).get("target_count")
     tolerance = shoot.brief["tolerance"]
-    shoot.brief = brief.plan(state, taste.load_style(), bool(shoot.store.reviews()))
+    shoot.brief = brief.plan(state, taste.lasting(), bool(shoot.store.reviews()))
     state["applied"] = shoot.brief
     state["rerun"] = "final_edit"  # until the chat changes something, confirming again reruns nothing
     target = state["draft"]["target_count"]

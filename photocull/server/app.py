@@ -20,7 +20,7 @@ from pydantic import BaseModel
 from .. import settings
 from ..engine import brief, export, pipeline, taste
 from ..engine.review import MODELS, SCREEN_MODEL, ClaudeReviewer, ReviewError, validate_key
-from ..engine.store import Store
+from ..engine.store import Store, summary
 
 UI_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), "ui")
 
@@ -152,9 +152,10 @@ def get_settings():
         "two_tier": s["two_tier"],
         "models": [{"id": k, "label": v[0], "in": v[1], "out": v[2]} for k, v in MODELS.items()],
         "has_key": DEMO or bool(settings.get_api_key()),
-        "recent": [f for f in s["recent"] if os.path.isdir(f)],
+        "recent": _recent(),
         "taste_count": len(taste.load()),
         "style": taste.load_style(),
+        "profile": taste.load_profile(),
         "desktop": app.state.pick_folder is not None,
     }
 
@@ -200,6 +201,18 @@ class StyleItemIn(BaseModel):
 def forget_style(body: StyleItemIn):
     taste.save_style([s for s in taste.load_style() if s != body.item])
     return {"style": taste.load_style()}
+
+
+class ProfileIn(BaseModel):
+    name: str = ""
+    genres: list[str] = []
+    look: list[str] = []
+    keep: str = "balanced"
+
+
+@app.post("/api/profile")
+def post_profile(body: ProfileIn):
+    return {"profile": taste.save_profile(body.model_dump())}
 
 
 # ---------- shoots ----------
@@ -255,7 +268,7 @@ def _brief_view(shoot):
     state = brief.load(shoot.store)
     return {"messages": state["messages"], "draft": state["draft"], "version": state["version"],
             "suggestions": state["suggestions"], "spent": state["spent"], "confirmed": bool(state["applied"]),
-            "style": state["applied"]["style"] if state["applied"] else taste.load_style(),
+            "style": state["applied"]["style"] if state["applied"] else taste.lasting(),
             "estimate": _draft_estimate(shoot)}
 
 
@@ -384,6 +397,26 @@ def open_url(body: UrlIn):
 
 
 # ---------- images ----------
+
+def _recent():
+    return [f for f in settings.load()["recent"] if os.path.isdir(f)]
+
+
+@app.get("/api/recent")
+def recent():
+    return [summary(f) for f in _recent()]
+
+
+@app.get("/api/cover")
+def cover(folder: str, fp: str):
+    """A thumbnail from a recent shoot, for its card on the home screen."""
+    if folder not in _recent():
+        raise HTTPException(404)
+    path = os.path.join(folder, ".photo-cull", "thumbs", os.path.basename(fp) + ".jpg")
+    if not os.path.exists(path):
+        raise HTTPException(404)
+    return FileResponse(path, media_type="image/jpeg", headers={"Cache-Control": "max-age=86400"})
+
 
 @app.get("/api/thumb/{fp}")
 def thumb(fp: str):

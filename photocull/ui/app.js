@@ -48,8 +48,53 @@
     applyTheme(app.settings.theme);
     fillModelSelects();
     connectEvents();
-    if (!app.settings.has_key) show("onboarding");
-    else showHome();
+    const opening = intro();
+    if (!app.settings.has_key || !app.settings.profile.done) startOnboarding();
+    else await showHome();
+    opening.play();
+  }
+
+  // ?still turns motion off, for checking layouts in a browser that doesn't run animations.
+  const MOTION = !!window.gsap && !matchMedia("(prefers-reduced-motion: reduce)").matches && !location.search.includes("still");
+
+  // Contents of the visible screen rise into place.
+  function enter(targets) {
+    const els = $$(targets);
+    if (!MOTION || !els.length || app.introPlaying) return;
+    gsap.from(els, { y: 14, opacity: 0, duration: .5, stagger: .045, ease: "power2.out", clearProps: "transform,opacity" });
+  }
+
+  const ENTER = "#home .home-hero > *:not([hidden]), #home .shoots > li, #onboarding .ob-step:not([hidden]) > *:not(.confetti)";
+
+  /* Once per launch: scattered prints fly in, fan out into the mark, the keeper is chosen, then the app appears. */
+  function intro() {
+    const el = $("#intro");
+    if (!MOTION) {
+      el.remove();
+      return { play() {} };
+    }
+    const word = $(".intro-word");
+    word.innerHTML = [...word.textContent].map((c) => `<span>${esc(c)}</span>`).join("");
+    const prints = $$(".intro-mark span");
+    app.introPlaying = true;
+    const tl = gsap.timeline({ paused: true, onComplete: () => el.remove() });
+    tl.from(prints, {
+      x: (i) => [-260, 240, 30][i], y: (i) => [-140, 120, 220][i], rotation: (i) => [-50, 40, -20][i],
+      opacity: 0, scale: 1.3, duration: .8, stagger: .07, ease: "power3.out",
+    })
+      .to(prints[0], { rotation: -16, x: -22, duration: .5, ease: "back.out(2)" }, "-=.25")
+      .to(prints[1], { rotation: 10, x: 22, duration: .5, ease: "back.out(2)" }, "<")
+      .fromTo(prints[2], { boxShadow: "0 0 0 0 rgba(223,189,120,0)" },
+        { boxShadow: "0 0 0 6px rgba(223,189,120,.25)", y: -6, duration: .35, yoyo: true, repeat: 1, ease: "power1.inOut" }, "-=.15")
+      .from(word.children, { y: 18, opacity: 0, duration: .45, stagger: .03, ease: "power3.out" }, "-=.55")
+      .from(".intro-tag", { opacity: 0, y: 8, duration: .4, ease: "power2.out" }, "-=.2")
+      .to(".intro-inner", { scale: .94, opacity: 0, duration: .4, ease: "power2.in" }, "+=.3")
+      .to(el, { opacity: 0, duration: .4, ease: "power1.out" }, "-=.15")
+      .add(() => { app.introPlaying = false; enter(ENTER); }, "-=.35");
+    const skip = () => tl.progress(1);
+    el.addEventListener("click", skip);
+    addEventListener("keydown", skip, { once: true });
+    return tl;
   }
 
   function fillModelSelects() {
@@ -61,11 +106,153 @@
     });
   }
 
+  const icon = (name) => `<svg class="i" aria-hidden="true"><use href="#i-${name}"/></svg>`;
+
+  /* ---------- profile pickers (onboarding and settings) ---------- */
+  const GENRES = [["weddings", "Weddings"], ["portraits", "Portraits"], ["events", "Events"], ["family", "Family"],
+    ["sports", "Sports"], ["wildlife", "Wildlife"], ["street", "Street"], ["travel", "Travel"], ["landscape", "Landscape"],
+    ["products", "Products"]];
+  const LOOK_PAIRS = [
+    [["candid", "Candid moments"], ["posed", "Posed and polished"]],
+    [["grain_ok", "Grain and blur are fine"], ["sharp", "Tack sharp or bust"]],
+    [["moody", "Moody light"], ["airy", "Bright and airy"]],
+    [["emotion", "Emotion first"], ["composition", "Composition first"]]];
+  const KEEPS = [["tight", "Ruthless", "Just the best 2", 2], ["balanced", "Balanced", "About 5", 5],
+    ["generous", "Generous", "Up to 10", 10]];
+
+  function renderPickers(root, p) {
+    const pressed = (on) => `aria-pressed="${on}"`;
+    root.querySelector("[data-kind=genres]").innerHTML = GENRES.map(([id, label]) =>
+      `<button type="button" class="chip" data-genre="${id}" ${pressed(p.genres.includes(id))}>${icon(id)}${label}</button>`).join("");
+    root.querySelector("[data-kind=look]").innerHTML = LOOK_PAIRS.map((pair) => `<div class="pair">${pair.map(([id, label]) =>
+      `<button type="button" class="choice" data-look="${id}" ${pressed(p.look.includes(id))}>${icon(id)}${label}</button>`)
+      .join(`<span class="vs">or</span>`)}</div>`).join("");
+    root.querySelector("[data-kind=keep]").innerHTML = KEEPS.map(([id, label, hint, n]) =>
+      `<button type="button" class="keep" data-keep="${id}" ${pressed(p.keep === id)}>${icon(id)}<b>${label}</b>
+        <span class="frames">${Array.from({ length: 30 }, (_, i) => `<i class="${i < n ? "kept" : ""}"></i>`).join("")}</span>
+        <span class="hint">${hint}</span></button>`).join("");
+  }
+
+  // Clicks on a picker change the profile p in place; returns whether anything changed.
+  function pick(e, p) {
+    const g = e.target.closest("[data-genre]"), l = e.target.closest("[data-look]"), k = e.target.closest("[data-keep]");
+    if (g) {
+      const id = g.dataset.genre;
+      p.genres = p.genres.includes(id) ? p.genres.filter((x) => x !== id) : [...p.genres, id];
+    } else if (l) {
+      const id = l.dataset.look;
+      const partner = LOOK_PAIRS.find((pair) => pair.some(([x]) => x === id)).map(([x]) => x);
+      const on = p.look.includes(id);
+      p.look = p.look.filter((x) => !partner.includes(x)).concat(on ? [] : [id]);
+    } else if (k) {
+      p.keep = k.dataset.keep;
+    } else return false;
+    const el = g || l || k;
+    if (MOTION) gsap.fromTo(el, { scale: .94 }, { scale: 1, duration: .35, ease: "back.out(3)", clearProps: "transform" });
+    return true;
+  }
+
+  function profileSummary(p) {
+    const genres = GENRES.filter(([id]) => p.genres.includes(id)).map(([, l]) => l.toLowerCase());
+    const list = genres.length > 1 ? `${genres.slice(0, -1).join(", ")} and ${genres.at(-1)}` : genres[0];
+    const how = { tight: "ruthlessly", balanced: "with a balanced eye", generous: "generously" }[p.keep];
+    return list ? `You shoot ${list} and edit ${how}.` : `You edit ${how}.`;
+  }
+
   /* ---------- onboarding ---------- */
-  $("#key-form").addEventListener("submit", async (e) => {
-    e.preventDefault();
-    const btn = e.submitter;
+  const PROFILE_STEPS = ["name", "genres", "look", "keep"];
+  const ob = { steps: [], i: 0, draft: null, after: null };
+
+  // opts.only: just these steps (e.g. ["key"]). opts.redo: run the profile setup again.
+  function startOnboarding(opts = {}) {
+    let steps = opts.only || [];
+    if (!opts.only) {
+      if (!app.settings.profile.done || opts.redo) steps = [...PROFILE_STEPS];
+      if (!app.settings.has_key) steps.push("key");
+      steps.push("done");
+    }
+    ob.steps = steps;
+    ob.draft = structuredClone(app.settings.profile);
+    ob.after = opts.after || (() => (app.shoot ? show("results") : showHome()));
+    renderPickers($("#onboarding"), ob.draft);
+    $("#ob-name").value = ob.draft.name;
+    $("#ob-dots").innerHTML = steps.filter((x) => x !== "done").map(() => "<li></li>").join("");
+    show("onboarding");
+    goStep(0, 0);
+  }
+
+  function askForKey() {
+    const back = !$("#results").hidden ? "results" : !$("#stage-screen").hidden ? "stage-screen" : null;
+    startOnboarding({ only: ["key"], after: () => (back ? show(back) : showHome()) });
+  }
+
+  function goStep(i, dir) {
+    const step = ob.steps[i];
+    const prev = $(`#onboarding .ob-step:not([hidden])`);
+    const next = $(`#onboarding .ob-step[data-step="${step}"]`);
+    ob.i = i;
+    $$("#ob-dots li").forEach((li, n) => { li.className = n < i ? "done" : n === i ? "on" : ""; });
+    const profileStep = PROFILE_STEPS.includes(step);
+    $("#ob-skip").hidden = !profileStep;
+    $("#ob-back").style.visibility = i > 0 && step !== "done" ? "visible" : "hidden";
+    $("#ob-next").textContent = { name: "Let's go", keep: "Save my profile", key: "Connect",
+      done: app.shoot ? "Back to my shoot" : "Choose a shoot" }[step] || "Next";
+    if (step === "key") {
+      fillModelSelects();
+      $("#key-error").textContent = "";
+    }
+    if (step === "done") {
+      const name = ob.draft.name;
+      $("#ob-done-title").textContent = name ? `Nice to meet you, ${name}!` : "You're all set!";
+      $("#ob-done-text").textContent = profileSummary(ob.draft) + " I'll keep that in mind on every cull. You can change it any time in Settings.";
+    }
+    const swap = () => {
+      if (prev && prev !== next) prev.hidden = true;
+      next.hidden = false;
+      if (MOTION && !app.introPlaying) {
+        gsap.from(next.children, { x: 28 * (dir || 1), opacity: 0, duration: .45, stagger: .05, ease: "power3.out", clearProps: "all" });
+      }
+      if (step === "name") setTimeout(() => $("#ob-name").focus(), 50);
+      if (step === "key") setTimeout(() => $("#key-input").focus(), 50);
+      if (step === "done") confetti();
+    };
+    if (prev && prev !== next && MOTION && dir) {
+      gsap.to(prev.children, { x: -24 * dir, opacity: 0, duration: .2, ease: "power2.in", onComplete: () => {
+        gsap.set(prev.children, { clearProps: "all" });
+        swap();
+      } });
+    } else swap();
+  }
+
+  async function saveProfile(p) {
+    const { profile } = await api("/api/profile", { body: { name: p.name, genres: p.genres, look: p.look, keep: p.keep } });
+    app.settings.profile = profile;
+    return profile;
+  }
+
+  async function obNext() {
+    const step = ob.steps[ob.i];
+    if (step === "name") ob.draft.name = $("#ob-name").value.trim();
+    if (step === "keep") {
+      try {
+        await saveProfile(ob.draft);
+      } catch (err) {
+        toast(err.message);
+        return;
+      }
+    }
+    if (step === "key" && !(await submitKey())) return;
+    if (ob.i + 1 < ob.steps.length) goStep(ob.i + 1, 1);
+    else ob.after();
+  }
+
+  async function submitKey() {
+    const btn = $("#ob-next");
     $("#key-error").textContent = "";
+    if (!$("#key-input").value.trim()) {
+      $("#key-error").textContent = "Paste your API key to continue.";
+      return false;
+    }
     btn.disabled = true;
     btn.textContent = "Checking key…";
     try {
@@ -74,14 +261,55 @@
       $("#key-input").value = "";
       app.settings = await api("/api/settings");
       fillModelSelects();
-      app.shoot ? show("results") : showHome();
+      return true;
     } catch (err) {
       $("#key-error").textContent = err.message;
+      btn.textContent = "Connect";
+      return false;
     } finally {
       btn.disabled = false;
-      btn.textContent = "Continue";
     }
+  }
+
+  $("#ob-next").addEventListener("click", obNext);
+  $("#ob-back").addEventListener("click", () => ob.i > 0 && goStep(ob.i - 1, -1));
+  $("#ob-skip").addEventListener("click", async () => {
+    ob.draft.name = ob.draft.name || $("#ob-name").value.trim();
+    try {
+      await saveProfile(ob.draft);  // whatever they chose so far; the rest stays at the defaults
+    } catch (err) {
+      toast(err.message);
+      return;
+    }
+    const rest = ob.steps.findIndex((x) => !PROFILE_STEPS.includes(x));
+    if (rest >= 0 && ob.steps[rest] !== "done") goStep(rest, 1);
+    else ob.after();
   });
+  $("#ob-name").addEventListener("keydown", (e) => { if (e.key === "Enter") obNext(); });
+  $("#key-form").addEventListener("submit", (e) => {
+    e.preventDefault();
+    obNext();
+  });
+  $("#onboarding .ob-stage").addEventListener("click", (e) => {
+    if (pick(e, ob.draft)) renderPickers($("#onboarding"), ob.draft);
+  });
+
+  // Little prints burst out of the mark.
+  function confetti() {
+    const box = $("#ob-confetti");
+    box.innerHTML = "";
+    if (!MOTION) return;
+    const colors = ["var(--pick)", "var(--gem)", "#ddd5c8", "#c9c1b4"];
+    for (let n = 0; n < 28; n++) {
+      const i = document.createElement("i");
+      i.style.background = colors[n % colors.length];
+      box.append(i);
+      const angle = Math.random() * Math.PI * 2, dist = 140 + Math.random() * 200;
+      gsap.fromTo(i, { x: -5, y: 0, rotation: 0, opacity: 1, scale: .6 },
+        { x: Math.cos(angle) * dist, y: Math.sin(angle) * dist * .7 + 120, rotation: Math.random() * 540 - 270, scale: 1,
+          opacity: 0, duration: 1.4 + Math.random() * .6, ease: "power2.out", delay: Math.random() * .15 });
+    }
+  }
 
   document.addEventListener("click", (e) => {
     const a = e.target.closest("[data-url]");
@@ -93,15 +321,37 @@
 
   /* ---------- home ---------- */
   async function showHome() {
-    app.settings = await api("/api/settings");
-    const recent = app.settings.recent;
-    $("#recent-wrap").hidden = !recent.length;
-    $("#recent").innerHTML = recent
-      .map((f) => `<li><button data-folder="${esc(f)}"><span>${esc(f.split("/").filter(Boolean).pop())}</span>
-        <span class="path">${esc(f)}</span></button></li>`)
-      .join("");
+    const [settings, shoots] = await Promise.all([api("/api/settings"), api("/api/recent")]);
+    app.settings = settings;
+    $("#recent-wrap").hidden = !shoots.length;
+    $("#recent").innerHTML = shoots.map(shootCard).join("");
     $("#path-form").hidden = app.settings.desktop;
+    const name = app.settings.profile.name, hour = new Date().getHours();
+    $("#home-hello").hidden = !name;
+    $("#home-hello").textContent = `${hour < 12 ? "Good morning" : hour < 18 ? "Good afternoon" : "Good evening"}, ${name}`;
     show("home");
+    enter(ENTER);
+  }
+
+  function shootCard(s) {
+    const covers = s.covers.map((fp) => `<img src="/api/cover?folder=${encodeURIComponent(s.folder)}&fp=${fp}" alt="" loading="lazy">`).join("")
+      || `<div class="mark" aria-hidden="true"><span></span><span></span><span></span></div>`;
+    const info = [s.photos ? `${s.photos} photos` : "Not opened yet"];
+    if (s.reviewed) info.push(`<span class="culled">Culled</span>`);
+    if (s.opened) info.push(ago(s.opened));
+    return `<li><button class="shoot-card" data-folder="${esc(s.folder)}" title="${esc(s.folder)}">
+      <div class="covers n${s.covers.length}">${covers}</div>
+      <div class="shoot-meta"><span class="shoot-title">${esc(s.name)}</span>
+        <span class="shoot-info">${info.join("<span aria-hidden=\"true\">·</span>")}</span></div></button></li>`;
+  }
+
+  function ago(seconds) {
+    const diff = seconds - Date.now() / 1000;
+    const rtf = new Intl.RelativeTimeFormat(undefined, { numeric: "auto" });
+    for (const [unit, size] of [["year", 31536000], ["month", 2592000], ["week", 604800], ["day", 86400], ["hour", 3600], ["minute", 60]]) {
+      if (Math.abs(diff) >= size) return rtf.format(Math.round(diff / size), unit);
+    }
+    return "just now";
   }
 
   $("#recent").addEventListener("click", (e) => {
@@ -276,7 +526,7 @@
 
   $("#start-review").addEventListener("click", () => {
     if (app.settings.has_key) openBrief();
-    else show("onboarding");
+    else askForKey();
   });
 
   function reviewed(state) {
@@ -420,13 +670,13 @@
 
   $("#update-review").addEventListener("click", () => {
     if (app.settings.has_key) openBrief();
-    else show("onboarding");
+    else askForKey();
   });
 
   $("#refine").addEventListener("click", () => {
     if (app.refining) return;
     if (app.settings.has_key) openBrief();
-    else show("onboarding");
+    else askForKey();
   });
 
   function finish() {
@@ -503,10 +753,12 @@
         : app.tab === "pick" ? (a.rank || Infinity) - (b.rank || Infinity) || (b.final || 0) - (a.final || 0) : a.id - b.id);
       html = list.map(tile).join("") || `<div class="empty">${app.tab === "pick" ? "No picks yet. Run the review, or change the selection in Settings." : "Nothing here."}</div>`;
     }
+    $("#grid").dataset.tab = app.tab;
     $("#grid").innerHTML = html;
   }
 
   const LABEL = { pick: "Pick", gem: "Gem", rejected: "Reject", similar: "Similar", below: "Below cut", candidate: "Unreviewed" };
+  const ICON = { check: icon("pick"), gem: icon("gem") };
 
   function tile(p) {
     const score = p.score != null ? `${p.score.toFixed(1)}` : "–";
@@ -515,12 +767,13 @@
     return `<div class="tile ${p.status}" data-id="${p.id}" tabindex="0">
       <span class="badge ${p.status}">${LABEL[p.status] || p.status}</span>
       <div class="acts">
-        <button class="chip-btn ${p.status === "pick" ? "on" : ""}" data-act="pick" title="Pick">✓ Pick</button>
-        <button class="chip-btn gem ${p.status === "gem" ? "on" : ""}" data-act="gem" title="Hidden gem">◆</button>
+        <button class="chip-btn ${p.status === "pick" ? "on" : ""}" data-act="pick" aria-label="Pick" title="Pick">${ICON.check}</button>
+        <button class="chip-btn gem ${p.status === "gem" ? "on" : ""}" data-act="gem" aria-label="Hidden gem" title="Hidden gem">${ICON.gem}</button>
       </div>
       <img loading="lazy" src="/api/thumb/${p.fp}" alt="">
-      <div class="meta"><p class="reason">${esc(reason)}</p>${line}
-        <div class="sub"><span>${esc(p.file)}</span><span>Claude ${score}${p.final ? ` · final ${p.final.toFixed(1)}` : ""}</span></div>
+      <div class="meta">
+        <div class="sub"><span class="file">${esc(p.file)}</span><span class="score" title="Claude${p.final ? " · final" : ""}">${score}${p.final ? ` · ${p.final.toFixed(1)}` : ""}</span></div>
+        <p class="reason">${esc(reason)}</p>${line}
       </div></div>`;
   }
 
@@ -585,8 +838,8 @@
     const cut = p.status === "below" && p.why ? `Why it was left out: ${p.why}. ` : "";
     $("#detail-notes").textContent = cut + (p.notes.length ? "Technical: " + p.notes.join(" · ") : "");
     $("#detail-actions").innerHTML = `
-      <button class="btn ${p.status === "pick" ? "primary" : ""}" data-act="pick">${p.status === "pick" ? "✓ Picked" : "Pick"}</button>
-      <button class="btn ${p.status === "gem" ? "primary" : ""}" data-act="gem" style="${p.status === "gem" ? "background:var(--gem);border-color:var(--gem)" : ""}">◆ ${p.status === "gem" ? "Hidden gem" : "Mark as gem"}</button>`;
+      <button class="btn ${p.status === "pick" ? "primary" : ""}" data-act="pick">${ICON.check}${p.status === "pick" ? "Picked" : "Pick"}</button>
+      <button class="btn ${p.status === "gem" ? "primary gem" : ""}" data-act="gem">${ICON.gem}${p.status === "gem" ? "Hidden gem" : "Mark as gem"}</button>`;
     const moment = app.shoot.moments.find((m) => m.id === p.moment);
     $("#detail-strip").innerHTML = moment.members.map((mid) => {
       const q = app.shoot.photos[mid - 1];
@@ -649,6 +902,7 @@
     applyTheme(app.settings.theme);
     fillModelSelects();
     renderStyle();
+    renderProfile();
     $("#two-tier-toggle").setAttribute("aria-checked", String(app.settings.two_tier));
     $("#taste-count").textContent = app.settings.taste_count
       ? `Learned from ${app.settings.taste_count} of your choices` : "Nothing learned yet";
@@ -660,8 +914,55 @@
       $("#gem-threshold").value = app.shootSettings.gem_threshold;
       syncOutputs();
     }
+    settingsPane(shootOpen ? "culling" : "profile");
     $("#settings").hidden = false;
   }
+
+  function settingsPane(name) {
+    $$(".prefs-nav [data-pane]").forEach((b) => b.setAttribute("aria-selected", String(b.dataset.pane === name)));
+    $$(".prefs-body .pane").forEach((p) => (p.hidden = p.dataset.pane !== name));
+  }
+
+  $(".prefs-nav").addEventListener("click", (e) => {
+    const b = e.target.closest("[data-pane]");
+    if (b) settingsPane(b.dataset.pane);
+  });
+
+  function renderProfile() {
+    const p = app.settings.profile;
+    $("#pf-avatar").textContent = (p.name || "?").slice(0, 1).toUpperCase();
+    $("#pf-title").textContent = p.name || "Your profile";
+    $("#pf-summary").textContent = profileSummary(p);
+    if (document.activeElement !== $("#pf-name")) $("#pf-name").value = p.name;
+    renderPickers($('.pane[data-pane="profile"]'), p);
+  }
+
+  let profileTimer;
+  function profileChanged() {
+    clearTimeout(profileTimer);
+    profileTimer = setTimeout(async () => {
+      try {
+        await saveProfile(app.settings.profile);
+      } catch (err) {
+        toast("Couldn't save your profile");
+      }
+    }, 400);
+  }
+
+  $('.pane[data-pane="profile"]').addEventListener("click", (e) => {
+    if (!pick(e, app.settings.profile)) return;
+    renderProfile();
+    profileChanged();
+  });
+  $("#pf-name").addEventListener("input", (e) => {
+    app.settings.profile.name = e.target.value.trim();
+    renderProfile();
+    profileChanged();
+  });
+  $("#pf-redo").addEventListener("click", () => {
+    $("#settings").hidden = true;
+    startOnboarding({ redo: true });
+  });
 
   function renderStyle() {
     const style = app.settings.style || [];
@@ -706,14 +1007,16 @@
 
   function applyTheme(theme) {
     document.documentElement.dataset.theme = theme;
-    $("#theme-toggle").setAttribute("aria-checked", String(theme === "dark"));
+    $$("[data-theme-choice]").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.themeChoice === theme)));
   }
 
-  $("#theme-toggle").addEventListener("click", async () => {
+  $("#theme-choice").addEventListener("click", async (e) => {
+    const b = e.target.closest("[data-theme-choice]");
     const previous = document.documentElement.dataset.theme;
-    applyTheme(previous === "dark" ? "light" : "dark");
+    if (!b || b.dataset.themeChoice === previous) return;
+    applyTheme(b.dataset.themeChoice);
     try {
-      app.settings = await api("/api/settings", { body: { theme: document.documentElement.dataset.theme } });
+      app.settings = await api("/api/settings", { body: { theme: b.dataset.themeChoice } });
     } catch (err) {
       applyTheme(previous);
       toast("Couldn't save the theme");
@@ -744,18 +1047,18 @@
 
   $("#replace-key").addEventListener("click", () => {
     $("#settings").hidden = true;
-    show("onboarding");
+    askForKey();
   });
   $("#remove-key").addEventListener("click", async () => {
     await api("/api/key", { method: "DELETE" });
     $("#settings").hidden = true;
     app.settings.has_key = false;
-    show("onboarding");
+    askForKey();
   });
   $("#reset-taste").addEventListener("click", async () => {
     await api("/api/taste/reset", { body: {} });
     $("#taste-count").textContent = "Nothing learned yet";
   });
 
-  boot().catch((err) => toast(err.message));
+  boot().catch((err) => { console.error(err); toast(err.message); });
 })();

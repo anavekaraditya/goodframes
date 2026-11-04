@@ -101,3 +101,30 @@ class Store:
         with self._lock:
             self._db.execute("INSERT OR REPLACE INTO meta VALUES (?,?)", (key, json.dumps(value)))
             self._db.commit()
+
+
+def summary(folder, covers=3):
+    """What a shoot card on the home screen shows, read without creating or changing the store."""
+    db = os.path.join(folder, WORK_DIR, "cull.db")
+    out = {"folder": folder, "name": os.path.basename(folder.rstrip("/")), "photos": 0, "reviewed": 0,
+           "covers": [], "opened": None}
+    if not os.path.exists(db):
+        return out
+    try:
+        con = sqlite3.connect(f"file:{db}?mode=ro", uri=True)
+        try:
+            files = dict(con.execute("SELECT fp, file FROM photos").fetchall())
+            reviews = con.execute("SELECT fp, data FROM reviews").fetchall()
+        finally:
+            con.close()
+    except sqlite3.Error:
+        return out
+    thumbs = os.path.join(folder, WORK_DIR, "thumbs")
+    have = lambda fp: os.path.exists(os.path.join(thumbs, fp + ".jpg"))
+    scored = sorted(((json.loads(d), fp) for fp, d in reviews if fp in files),
+                    key=lambda r: -(r[0].get("score") or 0))
+    best = [fp for r, fp in scored if not r.get("reject") and have(fp)]
+    rest = [fp for fp in sorted(files, key=files.get) if fp not in best and have(fp)]  # unreviewed: first frames
+    out.update(photos=len(files), reviewed=len(scored), covers=(best + rest)[:covers],
+               opened=os.path.getmtime(db))
+    return out

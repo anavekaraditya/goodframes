@@ -29,7 +29,7 @@ def _shoot(folder, genre="auto", quiet=False):
 
     shoot = pipeline.analyze(folder, Store(folder), genre, on_event)
     if not shoot.photos:
-        sys.exit(f"No JPEG/HEIC photos found in {folder}")
+        sys.exit(f"No photos (JPEG, HEIC or RAW) found in {folder}")
     return shoot
 
 

@@ -8,10 +8,10 @@ import os
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
-from PIL import Image, ImageOps
+from PIL import Image
 
 from . import brief, grouping, moments, scoring, taste
-from .ingest import THUMB_EDGE, ingest
+from .ingest import THUMB_EDGE, ingest, open_photo
 from .review import FACE_CROP_EDGE, MAX_FINALISTS, RUBRIC_VERSION, ReviewError, estimate_cost, usage_cost
 
 # A two-tier review screens every moment with an inexpensive model and sends close calls to the
@@ -77,13 +77,12 @@ class Shoot:
             return None
         x, y, w, h = max(faces, key=lambda f: f["box"][2])["box"]
         try:
-            with Image.open(os.path.join(self.folder, p["file"])) as im:
-                im = ImageOps.exif_transpose(im).convert("RGB")
-                s = max(max(im.size) / THUMB_EDGE, 1.0)  # face boxes are in thumbnail pixels
-                pad = FACE_PADDING * max(w, h)
-                box = (max(0, int((x - pad) * s)), max(0, int((y - pad) * s)),
-                       min(im.width, int((x + w + pad) * s)), min(im.height, int((y + h + pad) * s)))
-                out = im.crop(box)
+            im = open_photo(os.path.join(self.folder, p["file"]))
+            s = max(max(im.size) / THUMB_EDGE, 1.0)  # face boxes are in thumbnail pixels
+            pad = FACE_PADDING * max(w, h)
+            box = (max(0, int((x - pad) * s)), max(0, int((y - pad) * s)),
+                   min(im.width, int((x + w + pad) * s)), min(im.height, int((y + h + pad) * s)))
+            out = im.crop(box)
             out.thumbnail((FACE_CROP_EDGE, FACE_CROP_EDGE), Image.LANCZOS)
             return _jpeg(out)
         except OSError:  # file moved or unreadable: review from the thumbnail alone

@@ -2,6 +2,7 @@
 import os
 import random
 import shutil
+import struct
 from datetime import datetime, timedelta
 
 import cv2
@@ -20,6 +21,45 @@ def _save(img, path, when):
     ex[306] = stamp
     ex.get_ifd(0x8769)[36867] = stamp
     img.save(path, "JPEG", quality=92, exif=ex)
+
+
+def write_dng(path, rgb, orientation=1, stamp="2026:10:20 17:30:00", model="Goodframes Test"):
+    """A minimal linear (demosaiced) DNG: one uncompressed 8-bit RGB strip, sRGB-ish colour."""
+    h, w, _ = rgb.shape
+    pixels = (np.asarray(rgb, dtype=np.uint16) * 257).astype("<u2").tobytes()
+    srat = lambda xs: b"".join(struct.pack("<ii", round(x * 10000), 10000) for x in xs)
+    xyz_to_srgb = (3.2404542, -1.5371385, -0.4985314, -0.9692660, 1.8760108, 0.0415560,
+                   0.0556434, -0.2040259, 1.0572252)
+    entries = [  # (tag, type, count, payload bytes)
+        (254, 4, 1, struct.pack("<I", 0)),
+        (256, 4, 1, struct.pack("<I", w)), (257, 4, 1, struct.pack("<I", h)),
+        (258, 3, 3, struct.pack("<3H", 16, 16, 16)), (259, 3, 1, struct.pack("<H", 1)),
+        (262, 3, 1, struct.pack("<H", 34892)), (271, 2, 0, b"Goodframes\0"), (272, 2, 0, model.encode() + b"\0"),
+        (273, 4, 1, None), (274, 3, 1, struct.pack("<H", orientation)), (277, 3, 1, struct.pack("<H", 3)),
+        (278, 4, 1, struct.pack("<I", h)), (279, 4, 1, struct.pack("<I", len(pixels))),
+        (284, 3, 1, struct.pack("<H", 1)), (306, 2, 0, stamp.encode() + b"\0"),
+        (50706, 1, 4, bytes((1, 4, 0, 0))), (50708, 2, 0, model.encode() + b"\0"),
+        (50721, 10, 9, srat(xyz_to_srgb)), (50728, 5, 3, struct.pack("<6I", 1, 1, 1, 1, 1, 1)),
+        (50778, 3, 1, struct.pack("<H", 21)),
+    ]
+    entries = [(t, ty, n or len(d or b""), d) for t, ty, n, d in entries]
+    ifd_size = 2 + 12 * len(entries) + 4
+    extra_at = 8 + ifd_size
+    extra, ifd = b"", struct.pack("<H", len(entries))
+    big = [e for e in entries if e[3] is not None and len(e[3]) > 4]
+    extra_len = sum(len(e[3]) + len(e[3]) % 2 for e in big)
+    strip_at = extra_at + extra_len
+    for tag, typ, n, data in entries:
+        if data is None:
+            data = struct.pack("<I", strip_at)
+        if len(data) > 4:
+            ifd += struct.pack("<HHII", tag, typ, n, extra_at + len(extra))
+            extra += data + b"\0" * (len(data) % 2)
+        else:
+            ifd += struct.pack("<HHI", tag, typ, n) + data.ljust(4, b"\0")
+    ifd += struct.pack("<I", 0)
+    with open(path, "wb") as f:
+        f.write(b"II*\0" + struct.pack("<I", 8) + ifd + extra + pixels)
 
 
 def _scene(seed, w=3000, h=2000, lines=False):

@@ -434,7 +434,7 @@
         break;
       case "analyzed": {
         if (!e.state || !e.state.photos.length) {
-          toast("No JPEG or HEIC photos in that folder.");
+          toast("No JPEG, HEIC or RAW photos in that folder.");
           showHome();
           return;
         }

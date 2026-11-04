@@ -1,10 +1,11 @@
 import hashlib
 import os
+import xml.etree.ElementTree as ET
 
 import numpy as np
 from conftest import FakeReviewer, _scene, write_dng
 
-from photocull.engine import evaluate, export, ingest, pipeline, review, scoring
+from photocull.engine import evaluate, export, ingest, pipeline, review, scoring, xmp
 from photocull.engine.store import Store
 
 
@@ -643,3 +644,51 @@ def test_brief_chat_sends_images_as_images():
         assert not any("base64" in m["content"] for m in messages[1:])
     assert sent[0][-1]["content"].startswith("Start the conversation.")
     assert sent[1][-1]["content"] == "A wedding\n\nctx"
+
+
+def _sidecar(folder, stem):
+    root = ET.parse(os.path.join(folder, stem + ".xmp")).getroot()
+    d = root.find(".//rdf:Description", xmp.NS)
+    return d.get(xmp.RATING), d.get(xmp.LABEL), xmp._get_caption(d), d
+
+
+def test_sidecars_rate_raw_files(shoot_dir):
+    for name in ("IMG_600.CR3", "IMG_100.NEF"):  # RAW halves of RAW+JPEG pairs; only the JPEG is decoded
+        open(os.path.join(shoot_dir, name), "wb").write(b"raw")
+    shoot = _analyze(shoot_dir)
+    pipeline.review(shoot, FakeReviewer())
+    f = _by_file(shoot)
+    assert f["IMG_600.jpg"]["status"] == "pick" and f["IMG_100.jpg"]["status"] == "rejected"
+    r = xmp.write_sidecars(shoot)
+    assert r["picks"] == 1 and r["rejects"] == 1 and r["no_raw"] > 0
+    rating, label, caption, _ = _sidecar(shoot_dir, "IMG_600")
+    assert (rating, label) == ("5", "Green") and caption.startswith("Goodframes pick")
+    assert 'xmp:Rating="5"' in open(os.path.join(shoot_dir, "IMG_600.xmp")).read()
+    assert _sidecar(shoot_dir, "IMG_100")[0] == "-1"
+    assert sorted(n for n in os.listdir(shoot_dir) if n.endswith(".xmp")) == ["IMG_100.xmp", "IMG_600.xmp"]
+
+    pipeline.set_override(shoot, f["IMG_600.jpg"]["id"], "unpick")
+    xmp.write_sidecars(shoot)
+    assert _sidecar(shoot_dir, "IMG_600")[:3] == ("0", None, None)
+
+
+def test_sidecars_keep_lightroom_edits_label_and_caption(shoot_dir):
+    open(os.path.join(shoot_dir, "IMG_600.CR3"), "wb").write(b"raw")
+    lightroom = """<?xpacket begin="" id="W5M0MpCehiHzreSzNTczkc9d"?>
+<x:xmpmeta xmlns:x="adobe:ns:meta/"><rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">
+<rdf:Description rdf:about="" xmlns:xmp="http://ns.adobe.com/xap/1.0/" xmlns:dc="http://purl.org/dc/elements/1.1/"
+ xmlns:crs="http://ns.adobe.com/camera-raw-settings/1.0/" crs:Exposure2012="+0.50" xmp:Label="Red">
+<xmp:Rating>2</xmp:Rating>
+<dc:description><rdf:Alt><rdf:li xml:lang="x-default">Mum's favourite</rdf:li></rdf:Alt></dc:description>
+</rdf:Description></rdf:RDF></x:xmpmeta>
+<?xpacket end="w"?>"""
+    open(os.path.join(shoot_dir, "IMG_600.xmp"), "w").write(lightroom)
+    shoot = _analyze(shoot_dir)
+    pipeline.review(shoot, FakeReviewer())
+    xmp.write_sidecars(shoot)
+    rating, label, caption, d = _sidecar(shoot_dir, "IMG_600")
+    assert (rating, label, caption) == ("5", "Red", "Mum's favourite")
+    assert d.get("{http://ns.adobe.com/camera-raw-settings/1.0/}Exposure2012") == "+0.50"
+    assert d.find(xmp.RATING) is None  # the old child element is gone, not duplicated
+    assert 'crs:Exposure2012' in open(os.path.join(shoot_dir, "IMG_600.xmp")).read()
+    assert open(os.path.join(shoot.store.work, "xmp-backup", "IMG_600.xmp")).read() == lightroom

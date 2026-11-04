@@ -896,6 +896,29 @@
     }
   });
 
+  $("#sidecars").addEventListener("click", async () => {
+    const btn = $("#sidecars");
+    btn.disabled = true;
+    try {
+      const r = await api("/api/sidecars", { body: {} });
+      const rated = r.picks + r.gems + r.rejects;
+      if (!rated) {
+        toast("Ratings reach camera RAW files (CR3, NEF, ARW…) only. Use Copy to folders for JPEG, HEIC and DNG.");
+        return;
+      }
+      const skipped = r.no_raw === 1 ? " 1 frame without a RAW file was skipped."
+        : r.no_raw ? ` ${r.no_raw} frames without a RAW file were skipped.` : "";
+      toast(`Rated ${r.picks} picks, ${r.gems} hidden gems and ${r.rejects} rejects.${skipped} ` +
+        "In Lightroom, import the folder, or choose Metadata › Read Metadata from Files if it's already there.", {
+        label: "Show in Finder", run: () => api("/api/reveal", { body: { folder: r.folder } }),
+      });
+    } catch (err) {
+      toast(err.message);
+    } finally {
+      btn.disabled = false;
+    }
+  });
+
   /* ---------- settings ---------- */
   async function openSettings() {
     app.settings = await api("/api/settings");

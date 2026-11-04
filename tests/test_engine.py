@@ -627,3 +627,19 @@ def test_raw_plus_jpeg_is_one_frame_and_exports_together(shoot_dir):
     picks = os.listdir(export.export(shoot)["picks_dir"])
     jpg = next(n for n in picks if n.endswith("_IMG_600.jpg"))
     assert jpg.replace(".jpg", ".dng") in picks
+
+
+def test_brief_chat_sends_images_as_images():
+    """The opening turn once formatted its image blocks into a string, billing ~480k tokens of base64."""
+    r = review.ClaudeReviewer("test-key")
+    sent = []
+    r._call = lambda system, messages, schema, **kw: sent.append(messages) or ({}, {})
+    jpeg = b"\xff\xd8 not really a jpeg"
+    r.brief_chat([], [jpeg, jpeg], "Current brief: {}")
+    r.brief_chat([{"role": "assistant", "text": "What is it?"}, {"role": "user", "text": "A wedding"}], [jpeg], "ctx")
+    for messages in sent:
+        assert [b["type"] for b in messages[0]["content"]][:-1] == ["image"] * (len(messages[0]["content"]) - 1)
+        assert all(isinstance(m["content"], str) for m in messages[1:])
+        assert not any("base64" in m["content"] for m in messages[1:])
+    assert sent[0][-1]["content"].startswith("Start the conversation.")
+    assert sent[1][-1]["content"] == "A wedding\n\nctx"

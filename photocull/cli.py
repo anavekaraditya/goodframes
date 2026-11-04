@@ -13,7 +13,7 @@ import os
 import sys
 
 from . import settings
-from .engine import evaluate, export, pipeline, sheets
+from .engine import evaluate, export, pipeline, sheets, xmp
 from .engine.review import RUBRIC_VERSION, SCREEN_MODEL, ClaudeReviewer
 from .engine.store import Store
 
@@ -117,6 +117,10 @@ def cmd_finalize(args):
     if not args.dry_run:
         res = export.export(shoot)
         print(f"Copied to {res['picks_dir']}" + (f" and {res['gems_dir']}" if res["gems"] else ""))
+    if args.sidecars and not args.dry_run:
+        r = xmp.write_sidecars(shoot)
+        print(f"Rated {r['picks']} picks, {r['gems']} gems and {r['rejects']} rejects in XMP sidecars"
+              + (f"; {r['no_raw']} frames had no RAW file" if r["no_raw"] else ""))
 
 
 def cmd_override(args):
@@ -155,6 +159,7 @@ def main(argv=None):
     f.add_argument("folder")
     f.add_argument("--dry-run", action="store_true")
     f.add_argument("--min-score", type=float)
+    f.add_argument("--sidecars", action="store_true", help="also rate RAW files in XMP sidecars for Lightroom")
     o = sub.add_parser("override")
     o.add_argument("folder")
     o.add_argument("id", type=int)

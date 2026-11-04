@@ -17,7 +17,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from .. import settings
-from ..engine import brief, export, pipeline, taste
+from ..engine import brief, export, pipeline, taste, xmp
 from ..engine.ingest import open_photo
 from ..engine.review import MODELS, SCREEN_MODEL, ClaudeReviewer, ReviewError, validate_key
 from ..engine.store import Store, summary
@@ -376,6 +376,12 @@ def shoot_settings(body: ShootSettingsIn):
 @app.post("/api/export")
 def do_export():
     return export.export(_need_shoot())
+
+
+@app.post("/api/sidecars")
+def do_sidecars():
+    shoot = _need_shoot()
+    return dict(xmp.write_sidecars(shoot), folder=shoot.folder)
 
 
 @app.post("/api/reveal")

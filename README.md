@@ -23,7 +23,10 @@ From three hundred frames to the ones worth editing. A Mac app that culls a phot
    to a set without repeats. Selection size in Settings moves the cut for free.
 6. **You decide**: browse picks, gems and rejects, override anything, and copy the results to
    `Goodframes/Picks` and `Goodframes/Hidden Gems` next to your originals. Your overrides teach
-   later reviews your taste.
+   later reviews your taste. **Rate RAW files** instead writes the cull into XMP sidecars
+   (picks 5★ green, gems 4★ purple, rejects flagged, Claude's reason as the caption) that
+   Lightroom and Capture One read. A sidecar you already have keeps your edits, labels and
+   captions, and is backed up to `.photo-cull/xmp-backup` first.
 
 Reviews, overrides and analysis are cached per shoot in `<folder>/.photo-cull/cull.db`, so
 re-opening a shoot costs nothing. Originals are never moved or modified.

@@ -24,15 +24,26 @@ def load():
         return []
 
 
-def record(action, review, notes):
+def record(action, review, notes, fp=None):
     """Remember why a frame was overridden; only frames Claude has described are useful."""
     if not review:
         return
     items = load()
     items.append({"action": action, "score": review.get("score"), "reason": review.get("reason"),
-                  "notes": notes[:3], "at": time.time()})
+                  "notes": notes[:3], "at": time.time(), "fp": fp})
     with open(_path(), "w") as f:
         json.dump(items[-200:], f)
+
+
+def unrecord(fp):
+    """Take back the latest example from this frame: the choice was undone, so it isn't your taste."""
+    items = load()
+    for i in range(len(items) - 1, -1, -1):
+        if items[i].get("fp") == fp:
+            del items[i]
+            with open(_path(), "w") as f:
+                json.dump(items, f)
+            return
 
 
 def reset():

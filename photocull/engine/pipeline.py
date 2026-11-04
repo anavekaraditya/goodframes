@@ -421,16 +421,24 @@ def decide(shoot, settings=None):
             p["status"], p["why"] = "pick", "Picked by you"
         elif o == "gem":
             p["status"], p["why"] = "gem", (p["review"] or {}).get("edit_recipe") or "Marked as gem by you"
+        elif o == "reject":
+            p["status"], p["why"] = "rejected", "Rejected by you"
         elif o in ("unpick", "ungem") and p["status"] in ("pick", "gem"):
             p["status"], p["why"] = "below", "Removed by you"
 
 
-def set_override(shoot, pid, action):
-    """action: pick | unpick | gem | ungem | None (clear). Records taste too."""
+def set_override(shoot, pid, action, undo=False, forget=False):
+    """action: pick | unpick | gem | ungem | reject | None (clear). Records taste too.
+
+    undo: this puts back the frame's previous override, which isn't a new choice to learn from.
+    forget: the choice being undone was learned, so take it back.
+    """
     p = shoot.by_id(pid)
     shoot.store.set_override(p["fp"], action)
-    if action:
-        taste.record(action, p.get("review"), p.get("notes", []))
+    if forget:
+        taste.unrecord(p["fp"])
+    if action and not undo:
+        taste.record(action, p.get("review"), p.get("notes", []), p["fp"])
     decide(shoot)
     return summary(p)
 
@@ -443,7 +451,7 @@ def summary(p):
         "technical": round(p["technical"] * 10, 1), "score": r.get("score"),
         "reason": r.get("reason"), "edit_potential": r.get("edit_potential"),
         "edit_recipe": r.get("edit_recipe"), "flaws": r.get("fixable_flaws", []),
-        "rank": p.get("rank"), "shoot_type": r.get("shoot_type"),
+        "rank": p.get("rank"), "shoot_type": r.get("shoot_type"), "best": bool(r.get("best")),
         "subscores": {k: r[k] for k in ("impact", "moment", "light", "composition", "subject_focus") if k in r},
         "notes": p.get("notes", []), "override": p.get("override"),
         "w": p["width"], "h": p["height"], "taken": p["taken"],

@@ -1,5 +1,7 @@
 """Goodframes desktop launcher: local server + native window (pywebview/WKWebView)."""
+import json
 import multiprocessing
+import os
 import socket
 import threading
 import time
@@ -33,8 +35,21 @@ def main():
         chosen = window.create_file_dialog(webview.FileDialog.FOLDER)
         return chosen[0] if chosen else None
 
+    def on_drop(e):
+        """A folder (or a photo inside one) dropped on the window opens as a shoot."""
+        files = (e.get("dataTransfer") or {}).get("files") or []
+        path = next((f.get("pywebviewFullPath") for f in files if f.get("pywebviewFullPath")), None)
+        if path:
+            folder = path if os.path.isdir(path) else os.path.dirname(path)
+            window.evaluate_js(f"window.goodframes && window.goodframes.openDropped({json.dumps(folder)})")
+
+    def bind():
+        from webview.dom import DOMEventHandler
+        window.dom.document.events.dragover += DOMEventHandler(lambda e: None, True, True, debounce=500)
+        window.dom.document.events.drop += DOMEventHandler(on_drop, True, True)
+
     app.state.pick_folder = pick_folder
-    webview.start()
+    webview.start(bind)
     server.should_exit = True
 
 

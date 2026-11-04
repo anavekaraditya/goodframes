@@ -11,7 +11,9 @@ KEYCHAIN_SERVICE = "PhotoCull"
 KEYCHAIN_USER = "anthropic-api-key"
 THEME_BACKGROUNDS = {"dark": "#171512", "light": "#f6f0e7"}  # shown by the native window before the page paints
 DEFAULTS = {"model": DEFAULT_MODEL, "effort": "medium", "recent": [], "theme": "dark",
-            "two_tier": True}  # screen with an inexpensive model; the chosen model takes close calls
+            "two_tier": True,  # screen with an inexpensive model; the chosen model takes close calls
+            "tile_size": 240}  # results grid thumbnail width, px
+TILE_SIZES = (160, 420)
 
 
 def screen_model(s):
@@ -40,6 +42,7 @@ def save(**changes):
         s["model"] = DEFAULT_MODEL
     if s["theme"] not in THEME_BACKGROUNDS:
         s["theme"] = DEFAULTS["theme"]
+    s["tile_size"] = min(max(int(s["tile_size"]), TILE_SIZES[0]), TILE_SIZES[1])
     with open(_path(), "w") as f:
         json.dump(s, f)
     return s

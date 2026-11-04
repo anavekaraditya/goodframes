@@ -32,7 +32,7 @@
 <section id="home" class="screen" hidden>
   <header class="topbar">
     <div class="brand"><div class="mark small" aria-hidden="true"><span></span><span></span><span></span></div>Goodframes</div>
-    <button class="icon-btn" data-open="settings" aria-label="Settings">⚙</button>
+    <button class="icon-btn" data-open="settings" aria-label="Settings"><svg class="i" viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="2.2"/><path d="M8 1.8v1.6M8 12.6v1.6M1.8 8h1.6M12.6 8h1.6M3.6 3.6l1.1 1.1M11.3 11.3l1.1 1.1M3.6 12.4l1.1-1.1M11.3 4.7l1.1-1.1"/></svg></button>
   </header>
   <div class="home-body">
     <button id="choose-folder" class="dropzone">
@@ -53,7 +53,7 @@
 <!-- The sort: animated stage -->
 <section id="stage-screen" class="screen" hidden>
   <header class="topbar">
-    <button class="icon-btn" id="stage-back" aria-label="Back">←</button>
+    <button class="icon-btn" id="stage-back" aria-label="Back"><svg class="i" viewBox="0 0 16 16" aria-hidden="true"><path d="M10 3L5 8l5 5"/></svg></button>
     <div class="shoot-name" id="shoot-name"></div>
     <ol class="steps" id="steps">
       <li data-step="ingest">Read</li><li data-step="technical">Check</li>
@@ -84,7 +84,7 @@
 <!-- Results -->
 <section id="results" class="screen" hidden>
   <header class="topbar">
-    <button class="icon-btn" id="results-back" aria-label="Back to home">←</button>
+    <button class="icon-btn" id="results-back" aria-label="Back to home"><svg class="i" viewBox="0 0 16 16" aria-hidden="true"><path d="M10 3L5 8l5 5"/></svg></button>
     <div class="shoot-name" id="results-name"></div>
     <nav class="tabs" role="tablist" id="tabs">
       <button role="tab" data-tab="pick" aria-selected="true">Picks <b></b></button>
@@ -93,7 +93,7 @@
       <button role="tab" data-tab="rejected">Rejects <b></b></button>
     </nav>
     <div class="topbar-actions">
-      <button class="icon-btn" data-open="settings" aria-label="Settings">⚙</button>
+      <button class="icon-btn" data-open="settings" aria-label="Settings"><svg class="i" viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="2.2"/><path d="M8 1.8v1.6M8 12.6v1.6M1.8 8h1.6M12.6 8h1.6M3.6 3.6l1.1 1.1M11.3 11.3l1.1 1.1M3.6 12.4l1.1-1.1M11.3 4.7l1.1-1.1"/></svg></button>
       <button class="btn" id="refine">Refine</button>
       <button class="btn primary" id="export">Copy to folders</button>
     </div>
@@ -113,7 +113,7 @@
 <!-- The brief: chat on one side, what will be confirmed on the other -->
 <div class="modal" id="brief" hidden role="dialog" aria-modal="true" aria-label="Brief for this cull">
   <div class="brief">
-    <button class="icon-btn close" data-close aria-label="Close">✕</button>
+    <button class="icon-btn close" data-close aria-label="Close"><svg class="i" viewBox="0 0 16 16" aria-hidden="true"><path d="M4 4l8 8M12 4l-8 8"/></svg></button>
     <section class="brief-chat">
       <h2 id="brief-heading">What do you want from this shoot?</h2>
       <p class="hint">Claude looks at about 12 small previews from the shoot, so it can ask specific questions.</p>
@@ -145,7 +145,7 @@
 <!-- Detail -->
 <div class="modal" id="detail" hidden role="dialog" aria-modal="true" aria-label="Photo details">
   <div class="detail">
-    <button class="icon-btn close" data-close aria-label="Close">✕</button>
+    <button class="icon-btn close" data-close aria-label="Close"><svg class="i" viewBox="0 0 16 16" aria-hidden="true"><path d="M4 4l8 8M12 4l-8 8"/></svg></button>
     <div class="detail-main">
       <img id="detail-img" alt="">
       <figure class="crop"><img id="detail-crop" alt="100% crop"><figcaption>100% focus check</figcaption></figure>
@@ -167,7 +167,7 @@
 <!-- Settings -->
 <div class="modal" id="settings" hidden role="dialog" aria-modal="true" aria-label="Settings">
   <div class="sheet">
-    <button class="icon-btn close" data-close aria-label="Close">✕</button>
+    <button class="icon-btn close" data-close aria-label="Close"><svg class="i" viewBox="0 0 16 16" aria-hidden="true"><path d="M4 4l8 8M12 4l-8 8"/></svg></button>
     <h2>Settings</h2>
     <label>Appearance</label>
     <div class="row"><span class="hint">Dark theme</span>

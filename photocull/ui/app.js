@@ -503,10 +503,15 @@
         : app.tab === "pick" ? (a.rank || Infinity) - (b.rank || Infinity) || (b.final || 0) - (a.final || 0) : a.id - b.id);
       html = list.map(tile).join("") || `<div class="empty">${app.tab === "pick" ? "No picks yet. Run the review, or change the selection in Settings." : "Nothing here."}</div>`;
     }
+    $("#grid").dataset.tab = app.tab;
     $("#grid").innerHTML = html;
   }
 
   const LABEL = { pick: "Pick", gem: "Gem", rejected: "Reject", similar: "Similar", below: "Below cut", candidate: "Unreviewed" };
+  const ICON = {
+    check: '<svg class="i" viewBox="0 0 16 16" aria-hidden="true"><path d="M3.5 8.5l3 3 6-7"/></svg>',
+    gem: '<svg class="i" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 2.5l5 5.5-5 5.5-5-5.5z"/></svg>',
+  };
 
   function tile(p) {
     const score = p.score != null ? `${p.score.toFixed(1)}` : "–";
@@ -515,12 +520,13 @@
     return `<div class="tile ${p.status}" data-id="${p.id}" tabindex="0">
       <span class="badge ${p.status}">${LABEL[p.status] || p.status}</span>
       <div class="acts">
-        <button class="chip-btn ${p.status === "pick" ? "on" : ""}" data-act="pick" title="Pick">✓ Pick</button>
-        <button class="chip-btn gem ${p.status === "gem" ? "on" : ""}" data-act="gem" title="Hidden gem">◆</button>
+        <button class="chip-btn ${p.status === "pick" ? "on" : ""}" data-act="pick" aria-label="Pick" title="Pick">${ICON.check}</button>
+        <button class="chip-btn gem ${p.status === "gem" ? "on" : ""}" data-act="gem" aria-label="Hidden gem" title="Hidden gem">${ICON.gem}</button>
       </div>
       <img loading="lazy" src="/api/thumb/${p.fp}" alt="">
-      <div class="meta"><p class="reason">${esc(reason)}</p>${line}
-        <div class="sub"><span>${esc(p.file)}</span><span>Claude ${score}${p.final ? ` · final ${p.final.toFixed(1)}` : ""}</span></div>
+      <div class="meta">
+        <div class="sub"><span class="file">${esc(p.file)}</span><span class="score" title="Claude${p.final ? " · final" : ""}">${score}${p.final ? ` · ${p.final.toFixed(1)}` : ""}</span></div>
+        <p class="reason">${esc(reason)}</p>${line}
       </div></div>`;
   }
 
@@ -585,8 +591,8 @@
     const cut = p.status === "below" && p.why ? `Why it was left out: ${p.why}. ` : "";
     $("#detail-notes").textContent = cut + (p.notes.length ? "Technical: " + p.notes.join(" · ") : "");
     $("#detail-actions").innerHTML = `
-      <button class="btn ${p.status === "pick" ? "primary" : ""}" data-act="pick">${p.status === "pick" ? "✓ Picked" : "Pick"}</button>
-      <button class="btn ${p.status === "gem" ? "primary" : ""}" data-act="gem" style="${p.status === "gem" ? "background:var(--gem);border-color:var(--gem)" : ""}">◆ ${p.status === "gem" ? "Hidden gem" : "Mark as gem"}</button>`;
+      <button class="btn ${p.status === "pick" ? "primary" : ""}" data-act="pick">${ICON.check}${p.status === "pick" ? "Picked" : "Pick"}</button>
+      <button class="btn ${p.status === "gem" ? "primary gem" : ""}" data-act="gem">${ICON.gem}${p.status === "gem" ? "Hidden gem" : "Mark as gem"}</button>`;
     const moment = app.shoot.moments.find((m) => m.id === p.moment);
     $("#detail-strip").innerHTML = moment.members.map((mid) => {
       const q = app.shoot.photos[mid - 1];

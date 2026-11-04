@@ -9,7 +9,7 @@ from .engine.review import DEFAULT_MODEL, MODELS, SCREEN_MODEL
 
 KEYCHAIN_SERVICE = "PhotoCull"
 KEYCHAIN_USER = "anthropic-api-key"
-THEME_BACKGROUNDS = {"dark": "#0f0e0d", "light": "#f5f0e7"}  # shown by the native window before the page paints
+THEME_BACKGROUNDS = {"dark": "#161618", "light": "#f5f5f6"}  # shown by the native window before the page paints
 DEFAULTS = {"model": DEFAULT_MODEL, "effort": "medium", "recent": [], "theme": "dark",
             "two_tier": True}  # screen with an inexpensive model; the chosen model takes close calls
 

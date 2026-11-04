@@ -1,9 +1,12 @@
 import hashlib
 import os
 import shutil
+from datetime import datetime, timedelta
 
+import cv2
 import numpy as np
-from conftest import FakeReviewer, _scene, write_dng
+from conftest import FIXTURES, FakeReviewer, _save, _scene, write_dng
+from PIL import Image, ImageEnhance
 
 from photocull.engine import evaluate, export, ingest, pipeline, review, scoring
 from photocull.engine.store import Store
@@ -33,6 +36,56 @@ def _photo(i, sharp=500.0, technical=0.8, faces=(), reject=None, extreme=False):
     m = {"sharpness": sharp, "exposure_score": 1.0, "faces": [{"eyes_found": e, "sharpness": sharp} for e in faces]}
     return {"id": i, "metrics": m, "technical": technical, "reject": reject, "extreme": extreme,
             "sharp_in_group": sharp / 500.0, "status": None, "notes": []}
+
+
+def _smile(face, slit=0.25, half=20, pad=70):
+    """Narrow both eyes to slits, as a big smile does, by squashing the rows around each eye."""
+    a = np.asarray(face).copy()
+    for cx, cy in ((607, 303), (744, 309)):
+        x0, x1 = cx - 65, cx + 65
+        eye_h = int(2 * half * slit)
+        top_h = (2 * pad - eye_h) // 2
+        parts = [(a[cy - pad:cy - half, x0:x1], top_h), (a[cy - half:cy + half, x0:x1], eye_h),
+                 (a[cy + half:cy + pad, x0:x1], 2 * pad - eye_h - top_h)]
+        a[cy - pad:cy + pad, x0:x1] = np.vstack([cv2.resize(r, (x1 - x0, h), interpolation=cv2.INTER_AREA)
+                                                 for r, h in parts])
+    return Image.fromarray(a)
+
+
+def test_smiling_frames_are_not_rejected_for_eyes_only_found_when_overexposed(tmp_path, monkeypatch):
+    # A smile narrows the eyes so Haar misses them; in a punchier copy with clipped highlights it
+    # finds one. That blown sibling must not get the two well-exposed frames rejected as blinks.
+    monkeypatch.setenv("PHOTOCULL_HOME", str(tmp_path / "home"))
+    folder = tmp_path / "shoot"
+    folder.mkdir()
+    face = _smile(Image.open(os.path.join(FIXTURES, "astronaut.png")).convert("RGB").resize((1536, 1536)))
+    t = datetime(2026, 10, 20, 17, 0, 0)
+    frames = [face, ImageEnhance.Brightness(face).enhance(0.97), ImageEnhance.Contrast(face).enhance(1.3)]
+    for i, img in enumerate(frames):
+        _save(img, str(folder / f"IMG_80{i}.jpg"), t + timedelta(seconds=i * 0.5))
+    f = _by_file(_analyze(str(folder)))
+    sharp, bright = [f["IMG_800.jpg"], f["IMG_801.jpg"]], f["IMG_802.jpg"]
+    eyes = lambda p: min(x["eyes_found"] for x in p["metrics"]["faces"])
+    assert all(eyes(p) < eyes(bright) for p in sharp)  # the bug's setup: eyes found only when blown
+    assert bright["metrics"]["exposure_score"] < sharp[0]["metrics"]["exposure_score"] - 0.1
+    assert len({p["group"] for p in f.values()}) == 1
+    for p in sharp:
+        assert p["status"] == "candidate", p["why"]
+        assert any("check whether they are open" in n for n in p["notes"])
+
+
+def test_blink_needs_a_comparable_sibling():
+    def photo(i, eyes, sharp=500.0, exposure=1.0, luma=120):
+        p = _photo(i, sharp, technical=0.6 + eyes / 10, faces=(eyes,))
+        p["metrics"].update(exposure_score=exposure, mean_luma=luma)
+        return p
+    for witness in (photo(1, 2, exposure=0.4), photo(1, 2, luma=170), photo(1, 2, sharp=300)):
+        ps = [photo(0, 0), witness]
+        scoring.select_in_groups(ps, [[0, 1]])
+        assert ps[0]["status"] == "candidate"
+    ps = [photo(0, 0), photo(1, 2)]
+    scoring.select_in_groups(ps, [[0, 1]])
+    assert ps[0]["status"] == "rejected" and "#1 has eyes open" in ps[0]["reject"]
 
 
 def test_softer_frame_with_the_better_moment_reaches_review():

@@ -10,6 +10,10 @@ MIN_SHARP_IN_BURST = 0.3   # sharpness relative to the burst's sharpest below wh
 SOFT_RATIO = 0.6           # relative sharpness below which a frame starts losing points
 UNUSABLE_DARK = 6          # mean luma below which a frame holds nothing to judge
 UNUSABLE_CLIPPED = 0.85    # share of clipped pixels above which a frame holds nothing to judge
+# A sibling's detected eyes count as evidence of a blink only from a frame this comparable:
+EYES_MIN_SHARP = 0.8       # sharpness relative to the frame judged (face sharpness shifts with lids)
+EYES_EXPOSURE_GAP = 0.1    # exposure-score shortfall allowed
+EYES_LUMA_GAP = 20         # mean-luma difference allowed: Haar finds eyes more easily once brightened
 
 
 def _pctl(values, q, default):
@@ -30,13 +34,8 @@ def score(photos, groups, genre="auto"):
     def face_sharp(p):
         return max((f["sharpness"] for f in p["metrics"]["faces"]), default=0.0)
 
-    def min_eyes(p):
-        return min((f["eyes_found"] for f in p["metrics"]["faces"]), default=None)
-
     group_sharp = [max(photos[i]["metrics"]["sharpness"] for i in g) or 1.0 for g in groups]
     group_face = [max(face_sharp(photos[i]) for i in g) or 1.0 for g in groups]
-    group_eyes = [max((e for e in (min_eyes(photos[i]) for i in g) if e is not None), default=None)
-                  for g in groups]
 
     for idx, p in enumerate(photos):
         m, notes = p["metrics"], []
@@ -50,11 +49,16 @@ def score(photos, groups, genre="auto"):
             face_rel = face_sharp(p) / face_ref
             face_n = 0.7 * (face_sharp(p) / group_face[g]) ** 0.5 + 0.3 * min(1.0, face_rel ** 0.5)
             sharp_n = 0.5 * sharp_n + 0.5 * face_n
-            # Haar eye detection misses many open eyes (dusk, glasses, profiles), so only a
-            # frame with fewer detected eyes than its near-duplicates is penalised.
-            eyes_n = 1.0 - 0.4 * max(group_eyes[g] - min_eyes(p), 0)
-            if eyes_n < 1.0:
+            # Haar eye detection misses many open eyes (dusk, glasses, profiles, smiles), so only
+            # a frame with fewer detected eyes than a comparable near-duplicate is penalised.
+            siblings = [photos[i] for i in groups[g]]
+            witness = _blink_witness(p, siblings)
+            eyes_n = 1.0 - 0.4 * (_fewest_eyes(witness) - _fewest_eyes(p)) if witness else 1.0
+            if witness:
                 notes.append("possible closed eyes")
+            elif any((_fewest_eyes(s) or 0) > _fewest_eyes(p) for s in siblings):
+                notes.append("eyes not detected, but found on a brighter or softer near-duplicate: "
+                             "check whether they are open")
         noise_n = 1.0 - 0.5 * min(max((m["noise_sigma"] - 3) / 12, 0.0), 1.0)
         if eyes_n is None:
             tech = 0.55 * sharp_n + 0.30 * m["exposure_score"] + 0.15 * noise_n
@@ -108,11 +112,10 @@ def score(photos, groups, genre="auto"):
         p["extreme"] = bool(extreme)
 
 
-def _why_weaker(p, best):
-    if best["metrics"]["faces"] and p["metrics"]["faces"]:
-        if min(f["eyes_found"] for f in p["metrics"]["faces"]) < min(
-                f["eyes_found"] for f in best["metrics"]["faces"]):
-            return f"eyes closed/blinking; #{best['id']} has eyes open"
+def _why_weaker(p, best, siblings):
+    witness = _blink_witness(p, siblings)
+    if witness:
+        return f"eyes closed/blinking; #{witness['id']} has eyes open"
     if p["metrics"]["sharpness"] < 0.8 * best["metrics"]["sharpness"]:
         return f"softer than near-duplicate #{best['id']}"
     if p["metrics"]["exposure_score"] < best["metrics"]["exposure_score"] - 0.1:
@@ -122,6 +125,25 @@ def _why_weaker(p, best):
 
 def _fewest_eyes(p):
     return min((f["eyes_found"] for f in p["metrics"]["faces"]), default=None)
+
+
+def _blink_witness(p, siblings):
+    """The sibling that shows p's eyes are closed, or None if none credibly does.
+
+    Haar misses eyes narrowed by a smile and finds them more easily in a brighter or
+    higher-contrast frame, so a sibling with more eyes found is evidence only when it is
+    about as sharp and as well exposed as p. Otherwise p's missing eyes are unknown.
+    """
+    mine = _fewest_eyes(p)
+    if mine is None:
+        return None
+    pm = p["metrics"]
+    witnesses = [s for s in siblings
+                 if (_fewest_eyes(s) or 0) > mine
+                 and s["metrics"]["sharpness"] >= EYES_MIN_SHARP * pm["sharpness"]
+                 and s["metrics"]["exposure_score"] >= pm["exposure_score"] - EYES_EXPOSURE_GAP
+                 and abs(s["metrics"].get("mean_luma", 0) - pm.get("mean_luma", 0)) <= EYES_LUMA_GAP]
+    return max(witnesses, key=_fewest_eyes, default=None)
 
 
 def _spread(items, n):
@@ -137,7 +159,8 @@ def select_in_groups(photos, groups, tolerance="standard"):
     """Mark each photo 'candidate' or 'rejected', leaving the choice of expression to the review.
 
     Keeps up to MAX_PER_BURST frames across each burst, dropping only clear failures: much
-    softer than the burst's sharpest frame, or eyes closed where a sibling has them open.
+    softer than the burst's sharpest frame, or eyes closed where a comparably sharp and
+    exposed sibling has them open.
     tolerance "loose" (from the photographer's brief) keeps more frames and no longer treats
     softness or a missing eye as a failure, since those can be exactly what they want to see.
     """
@@ -153,14 +176,11 @@ def select_in_groups(photos, groups, tolerance="standard"):
         if not alive:
             continue
         best = max(alive, key=lambda p: p["technical"])
-        eyes = [e for e in map(_fewest_eyes, alive) if e is not None]
-        most_eyes = max(eyes, default=None)
 
         def clear_failure(p):
             if loose:
                 return False
-            closed = most_eyes is not None and _fewest_eyes(p) is not None and _fewest_eyes(p) < most_eyes
-            return closed or p["sharp_in_group"] < MIN_SHARP_IN_BURST
+            return _blink_witness(p, alive) is not None or p["sharp_in_group"] < MIN_SHARP_IN_BURST
 
         extremes = sorted((p for p in alive if p["extreme"]), key=lambda p: -p["technical"])[:max_extremes]
         normal = [p for p in alive if not p["extreme"] and (p is best or not clear_failure(p))]
@@ -174,4 +194,4 @@ def select_in_groups(photos, groups, tolerance="standard"):
                 p["status"] = "candidate"
             else:
                 p["status"] = "rejected"
-                p["reject"] = _why_weaker(p, best)
+                p["reject"] = _why_weaker(p, best, alive)

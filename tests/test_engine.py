@@ -1,5 +1,6 @@
 import hashlib
 import os
+import shutil
 
 import numpy as np
 from conftest import FakeReviewer, _scene, write_dng
@@ -643,3 +644,47 @@ def test_brief_chat_sends_images_as_images():
         assert not any("base64" in m["content"] for m in messages[1:])
     assert sent[0][-1]["content"].startswith("Start the conversation.")
     assert sent[1][-1]["content"] == "A wedding\n\nctx"
+
+
+def test_reject_override_and_undo_takes_the_lesson_back(shoot_dir):
+    from photocull.engine import taste
+    shoot = _analyze(shoot_dir)
+    pipeline.review(shoot, FakeReviewer())
+    p = _by_file(shoot)["IMG_600.jpg"]
+    learned = len(taste.load())
+    pipeline.set_override(shoot, p["id"], "reject")
+    assert p["status"] == "rejected" and p["why"] == "Rejected by you"
+    assert len(taste.load()) == learned + 1
+    pipeline.set_override(shoot, p["id"], None, undo=True, forget=True)  # undo
+    assert p["status"] == "pick" and len(taste.load()) == learned
+    assert pipeline.summary(p)["best"] is True
+
+
+def test_memory_cards_and_empty_folders(tmp_path, shoot_template):
+    vols = tmp_path / "Volumes"
+    card = vols / "EOS_DIGITAL" / "DCIM" / "100CANON"
+    card.mkdir(parents=True)
+    (vols / "Backup" / "stuff").mkdir(parents=True)  # a drive without DCIM isn't a card
+    for n in ("IMG_100.jpg", "IMG_101.jpg"):
+        shutil.copy(os.path.join(shoot_template, n), card / n)
+    assert ingest.memory_cards(str(vols)) == [{"name": "EOS_DIGITAL", "photos": 2, "folders": [
+        {"name": "100CANON", "folder": str(card), "photos": 2}]}]
+    dcim = str(vols / "EOS_DIGITAL" / "DCIM")
+    open(os.path.join(dcim, "MVI_1.MOV"), "w").close()
+    info = ingest.describe_folder(dcim)
+    assert info["videos"] == 1 and info["subfolders"][0]["name"] == "100CANON"
+
+
+def test_unreadable_raw_is_skipped_not_shown_blank(tmp_path, monkeypatch, shoot_template):
+    monkeypatch.setenv("PHOTOCULL_HOME", str(tmp_path / "home"))
+    folder = tmp_path / "shoot"
+    folder.mkdir()
+    shutil.copy(os.path.join(shoot_template, "IMG_600.jpg"), folder / "IMG_600.jpg")
+    bad = folder / "DSC_0002.dng"
+    write_dng(str(bad), np.asarray(_scene(8, 600, 400)))
+    with open(bad, "r+b") as f:
+        f.truncate(os.path.getsize(bad) // 3)
+    errors = []
+    shoot = pipeline.analyze(str(folder), Store(str(folder)),
+                             on_event=lambda e: e.get("error") and errors.append(e["file"]))
+    assert [p["file"] for p in shoot.photos] == ["IMG_600.jpg"] and errors == ["DSC_0002.dng"]

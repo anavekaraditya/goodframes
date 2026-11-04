@@ -46,6 +46,7 @@
     Stage.init();
     app.settings = await api("/api/settings");
     applyTheme(app.settings.theme);
+    applyTileSize(app.settings.tile_size);
     fillModelSelects();
     connectEvents();
     const opening = intro();
@@ -326,12 +327,86 @@
     $("#recent-wrap").hidden = !shoots.length;
     $("#recent").innerHTML = shoots.map(shootCard).join("");
     $("#path-form").hidden = app.settings.desktop;
+    $("#dz-sub").textContent = app.settings.desktop
+      ? "A folder of JPEG, HEIC or RAW photos. Or drop one here." : "A folder of JPEG, HEIC or RAW photos";
     const name = app.settings.profile.name, hour = new Date().getHours();
     $("#home-hello").hidden = !name;
     $("#home-hello").textContent = `${hour < 12 ? "Good morning" : hour < 18 ? "Good afternoon" : "Good evening"}, ${name}`;
     show("home");
     enter(ENTER);
+    pollCards();
   }
+
+  /* Camera cards: offer to cull one as soon as it's plugged in. */
+  let cardTimer = null, cardsShown = "";
+  const dismissedCards = new Set();
+  async function pollCards() {
+    clearTimeout(cardTimer);
+    if ($("#home").hidden) return;
+    try {
+      const cards = (await api("/api/cards")).filter((c) => !dismissedCards.has(c.name));
+      const key = JSON.stringify(cards);
+      if (key !== cardsShown) {  // re-render only on change, so a hovered button doesn't flicker
+        cardsShown = key;
+        renderCards(cards);
+      }
+    } catch (err) { /* checking for cards is best effort */ }
+    cardTimer = setTimeout(pollCards, 4000);
+  }
+
+  function renderCards(cards) {
+    $("#cards").hidden = !cards.length;
+    $("#cards").innerHTML = cards.map((c) => {
+      const one = c.folders.length === 1;
+      const buttons = c.folders.map((f) => `<button class="btn ${one ? "primary" : ""}" data-card-folder="${esc(f.folder)}">${
+        one ? "Cull this card" : `${esc(f.name)} · ${f.photos}`}</button>`).join("");
+      return `<li class="card-banner"><span class="card-icon">${icon("card")}</span>
+        <div class="card-text"><b>${esc(c.name)}</b><span>${c.photos} photo${c.photos > 1 ? "s" : ""} on this card</span></div>
+        <div class="card-acts">${buttons}
+          <button class="icon-btn" data-dismiss-card="${esc(c.name)}" aria-label="Not now" title="Not now">${icon("close")}</button></div></li>`;
+    }).join("");
+    if (cards.length && MOTION) gsap.from("#cards li", { y: -8, opacity: 0, duration: .35, ease: "power2.out", clearProps: "all" });
+  }
+
+  $("#cards").addEventListener("click", (e) => {
+    const f = e.target.closest("[data-card-folder]"), d = e.target.closest("[data-dismiss-card]");
+    if (f) openShoot(f.dataset.cardFolder);
+    if (d) {
+      dismissedCards.add(d.dataset.dismissCard);
+      cardsShown = "";
+      pollCards();
+    }
+  });
+
+  /* Drop a folder on the window. The desktop app passes its path in from Python (see desktop.py);
+     a browser can't see paths, so there the path field is the way in. */
+  window.goodframes = {
+    openDropped(folder) {
+      document.body.classList.remove("dragging");
+      if (!$("#onboarding").hidden) return;
+      $$(".modal").forEach((m) => (m.hidden = true));
+      openShoot(folder);
+    },
+  };
+  let dragDepth = 0;
+  addEventListener("dragenter", (e) => {
+    if (!$("#onboarding").hidden || ![...e.dataTransfer.types].includes("Files")) return;
+    dragDepth++;
+    document.body.classList.add("dragging");
+  });
+  addEventListener("dragleave", () => {
+    if (--dragDepth <= 0) {
+      dragDepth = 0;
+      document.body.classList.remove("dragging");
+    }
+  });
+  addEventListener("dragover", (e) => e.preventDefault());
+  addEventListener("drop", (e) => {
+    e.preventDefault();
+    dragDepth = 0;
+    document.body.classList.remove("dragging");
+    if (!app.settings.desktop) toast("Dropping a folder works in the Goodframes app. Here, type its path instead.");
+  });
 
   function shootCard(s) {
     const covers = s.covers.map((fp) => `<img src="/api/cover?folder=${encodeURIComponent(s.folder)}&fp=${fp}" alt="" loading="lazy">`).join("")
@@ -385,6 +460,11 @@
     app.spent = 0;
     app.chatSpent = 0;
     app.refining = false;
+    app.unreadable = [];
+    app.live = [];
+    app.reviewStartedAt = null;
+    undoStack.length = 0;
+    $("#peek").hidden = true;
     $("#estimate").hidden = $("#finished").hidden = true;
     $("#shoot-name").textContent = folder.split("/").filter(Boolean).pop();
     setStep("ingest");
@@ -429,15 +509,20 @@
         if (e.stage === "ingest") setStep("ingest");
         break;
       case "ingest":
+        if (e.error) {
+          app.unreadable.push(e.file);
+          break;
+        }
         Stage.addCard(e.fp, e.n);
         status(`Reading ${e.i} / ${e.n}`);
         break;
       case "analyzed": {
-        if (!e.state || !e.state.photos.length) {
-          toast("No JPEG, HEIC or RAW photos in that folder.");
-          showHome();
+        if (!e.state) break;  // the pipeline's own early notice; the server's, with the state, follows
+        if (!e.state.photos.length) {
+          emptyFolder(e.folder_info);
           return;
         }
+        if (app.unreadable.length) toast(unreadableText());
         app.shoot = e.state;
         app.estimate = e.estimate;
         // A shoot that was culled before opens on its saved results; reviewing again is the user's choice.
@@ -466,6 +551,7 @@
         app.reviewing.done++;
         app.spent = e.spent;
         Stage.reviewDone(e.moment, e.photos);
+        livePicks(e.photos);
         progress(`Claude reviewed ${app.reviewing.done} / ${app.reviewing.total} moments · $${(e.spent + app.chatSpent).toFixed(2)}`);
         break;
       case "review_error":
@@ -658,6 +744,7 @@
     }
     $("#estimate").hidden = true;
     setStep("review");
+    app.reviewStartedAt = Date.now();
     if (!res.started) {
       const t = Stage.applyAll(app.shoot);
       later(t + 400, finish);
@@ -684,12 +771,92 @@
     const c = app.shoot.counts;
     const t = Stage.finale(app.shoot);
     status(app.spent + app.chatSpent ? `Done · $${(app.spent + app.chatSpent).toFixed(2)}` : "Done");
+    $("#peek").hidden = $("#peek-modal").hidden = true;
     later(t + 200, () => {
+      const n = app.shoot.photos.length;
+      const took = app.reviewStartedAt ? (Date.now() - app.reviewStartedAt) / 1000 : 0;
+      const byHand = n * HAND_SECONDS;
+      const saved = took && byHand >= 60 && byHand > took * 1.5 ? ` · about ${duration(byHand)} by hand` : "";
       $("#finished-text").innerHTML = `<strong>${c.pick} picks${c.gem ? ` and ${c.gem} hidden gem${c.gem > 1 ? "s" : ""}` : ""}</strong>
-        <span>from ${app.shoot.photos.length} photos</span>`;
+        <span>from ${n} photos${took ? ` in ${duration(took)}` : ""}${saved}</span>`;
       $("#finished").hidden = false;
       gsap.fromTo("#finished", { y: 30, opacity: 0 }, { y: 0, opacity: 1, duration: 0.5, ease: "power3.out" });
     });
+  }
+
+  // A first pass by hand: a few seconds a frame to look, compare with its neighbours and flag it.
+  const HAND_SECONDS = 3;
+
+  function duration(s) {
+    if (s < 60) return "under a minute";
+    if (s < 3600) return `${Math.round(s / 60)} min`;
+    return `${(s / 3600).toFixed(1).replace(/\.0$/, "")} hr`;
+  }
+
+  /* Picks so far: each reviewed moment's best frame, browsable before the cull finishes. */
+  function livePicks(photos) {
+    if (app.refining) return;
+    for (const p of photos.filter((q) => q.best)) {
+      app.live = app.live.filter((q) => q.id !== p.id).concat(p);
+    }
+    $("#peek-count").textContent = app.live.length;
+    $("#peek").hidden = !app.live.length;
+    if (!$("#peek-modal").hidden) renderPeek();
+  }
+
+  function renderPeek() {
+    $("#peek-grid").innerHTML = [...app.live].sort((a, b) => (b.score || 0) - (a.score || 0)).map((p) =>
+      `<div class="tile pick" title="${esc(p.file)}"><img src="/api/thumb/${p.fp}" alt="${esc(p.file)}">
+        <div class="meta"><p class="reason">${esc(p.reason || "")}</p></div></div>`).join("");
+  }
+
+  $("#peek").addEventListener("click", () => {
+    renderPeek();
+    $("#peek-modal").hidden = false;
+  });
+
+  function unreadableText() {
+    const n = app.unreadable.length, names = app.unreadable.slice(0, 3).join(", ");
+    return `${n} file${n > 1 ? "s" : ""} couldn't be read and ${n > 1 ? "were" : "was"} skipped: ${names}${n > 3 ? "…" : ""}`;
+  }
+
+  function emptyFolder(info) {
+    showHome();
+    const subs = (info && info.subfolders) || [];
+    if (subs.length) {
+      done({ icon: "folder-add", title: "The photos are in folders inside this one",
+        text: "Goodframes culls one folder at a time. Which one?",
+        actions: subs.slice(0, 4).map((s) => ({ label: `${s.name} · ${s.photos} photos`, run: () => openShoot(s.folder) })),
+        dismiss: "Cancel" });
+    } else if (info && info.videos) {
+      done({ icon: "folder-add", title: "Only videos in this folder",
+        text: `It has ${info.videos} video${info.videos > 1 ? "s" : ""} and no photos. Goodframes culls JPEG, HEIC and RAW photos.` });
+    } else {
+      done({ icon: "folder-add", title: "No photos in this folder",
+        text: "Goodframes culls JPEG, HEIC and RAW photos. Choose a folder that has some." });
+    }
+  }
+
+  /* A finished action: what happened, and the next step. */
+  function done({ title, text, icon: name = "pick", actions = [], dismiss = "Done" }) {
+    $("#done-icon").innerHTML = icon(name);
+    $("#done-title").textContent = title;
+    $("#done-text").textContent = text;
+    const box = $("#done-actions");
+    box.innerHTML = "";
+    box.classList.toggle("stack", actions.length > 1);
+    [...actions, { label: dismiss }].forEach((a, i) => {
+      const b = document.createElement("button");
+      b.className = `btn ${i === 0 ? "primary" : a.run ? "" : "ghost"}`;
+      b.textContent = a.label;
+      b.onclick = () => {
+        $("#done-sheet").hidden = true;
+        if (a.run) a.run();
+      };
+      box.append(b);
+    });
+    $("#done-sheet").hidden = false;
+    box.firstChild.focus();
   }
 
   $("#see-results").addEventListener("click", () => openResults());
@@ -734,6 +901,8 @@
         ? `${est.moments} moment${est.moments > 1 ? "s were" : " was"} reviewed by an earlier version, or not at all. Showing your saved results.`
         : "The final edit for this shoot isn't finished. Showing picks from review scores.";
     }
+    $("#unreadable").hidden = !(app.unreadable || []).length;
+    if (!$("#unreadable").hidden) $("#unreadable").textContent = unreadableText();
     const unmet = app.shoot.unmet || [];
     $("#unmet").hidden = !unmet.length;
     $("#unmet").textContent = unmet.length ? `No frame found for: ${unmet.join(", ")}` : "";
@@ -744,7 +913,9 @@
         const members = m.members.map((id) => ps[id - 1]);
         const shown = members.filter((p) => p.status !== "rejected");
         if (!shown.length) return;
-        html += `<div class="moment-head">Moment ${m.id} · ${time(members[0].taken)}</div>
+        const cmp = shown.length > 1
+          ? `<button class="btn ghost small" data-compare="${m.id}">${icon("compare")}Compare</button>` : "";
+        html += `<div class="moment-head">Moment ${m.id} · ${time(members[0].taken)}${cmp}</div>
           <div class="moment-row">${shown.map(tile).join("")}</div>`;
       });
     } else {
@@ -753,28 +924,47 @@
         : app.tab === "pick" ? (a.rank || Infinity) - (b.rank || Infinity) || (b.final || 0) - (a.final || 0) : a.id - b.id);
       html = list.map(tile).join("") || `<div class="empty">${app.tab === "pick" ? "No picks yet. Run the review, or change the selection in Settings." : "Nothing here."}</div>`;
     }
+    const focused = focusedTile(), before = visibleIds();
     $("#grid").dataset.tab = app.tab;
     $("#grid").innerHTML = html;
+    // Keep the keyboard where it was: on the same frame, or the one that took its place.
+    if (focused) {
+      const ids = visibleIds();
+      const id = ids.includes(focused) ? focused : ids[Math.min(before.indexOf(focused), ids.length - 1)];
+      if (id) focusTile(id);
+    }
   }
 
-  const LABEL = { pick: "Pick", gem: "Gem", rejected: "Reject", similar: "Similar", below: "Below cut", candidate: "Unreviewed" };
-  const ICON = { check: icon("pick"), gem: icon("gem") };
+  function applyTileSize(px) {
+    document.documentElement.style.setProperty("--tile", `${px}px`);
+    $("#tile-size").value = px;
+  }
 
+  let sizeTimer;
+  $("#tile-size").addEventListener("input", (e) => {
+    applyTileSize(+e.target.value);
+    clearTimeout(sizeTimer);
+    sizeTimer = setTimeout(() => api("/api/settings", { body: { tile_size: +e.target.value } }).catch(() => {}), 400);
+  });
+  $("#shortcuts-btn").addEventListener("click", () => ($("#shortcuts").hidden = false));
+
+  const LABEL = { pick: "Pick", gem: "Gem", rejected: "Reject", similar: "Similar", below: "Below cut", candidate: "Unreviewed" };
+  const ICON = { check: icon("pick"), gem: icon("gem"), reject: icon("reject") };
+
+  // The photo and Claude's reason; the file name and scores are in the detail view.
   function tile(p) {
-    const score = p.score != null ? `${p.score.toFixed(1)}` : "–";
     const line = p.status === "gem" ? `<div class="recipe-line">${esc(p.edit_recipe || p.why)}</div>` : "";
     const reason = p.status === "rejected" ? p.why : (p.reason || p.why || "");
-    return `<div class="tile ${p.status}" data-id="${p.id}" tabindex="0">
-      <span class="badge ${p.status}">${LABEL[p.status] || p.status}</span>
+    const rank = app.tab === "pick" && p.rank ? `<span class="rank" title="Place in the final edit">${p.rank}</span>` : "";
+    return `<div class="tile ${p.status}" data-id="${p.id}" tabindex="0" title="${esc(p.file)}">
+      <span class="badge ${p.status}">${LABEL[p.status] || p.status}</span>${rank}
       <div class="acts">
-        <button class="chip-btn ${p.status === "pick" ? "on" : ""}" data-act="pick" aria-label="Pick" title="Pick">${ICON.check}</button>
-        <button class="chip-btn gem ${p.status === "gem" ? "on" : ""}" data-act="gem" aria-label="Hidden gem" title="Hidden gem">${ICON.gem}</button>
+        <button class="chip-btn ${p.status === "pick" ? "on" : ""}" data-act="pick" aria-label="Pick (P)" title="Pick (P)">${ICON.check}</button>
+        <button class="chip-btn gem ${p.status === "gem" ? "on" : ""}" data-act="gem" aria-label="Hidden gem (G)" title="Hidden gem (G)">${ICON.gem}</button>
+        <button class="chip-btn reject ${p.override === "reject" ? "on" : ""}" data-act="reject" aria-label="Reject (X)" title="Reject (X)">${ICON.reject}</button>
       </div>
-      <img loading="lazy" src="/api/thumb/${p.fp}" alt="">
-      <div class="meta">
-        <div class="sub"><span class="file">${esc(p.file)}</span><span class="score" title="Claude${p.final ? " · final" : ""}">${score}${p.final ? ` · ${p.final.toFixed(1)}` : ""}</span></div>
-        <p class="reason">${esc(reason)}</p>${line}
-      </div></div>`;
+      <img loading="lazy" src="/api/thumb/${p.fp}" alt="${esc(p.file)}">
+      <div class="meta"><p class="reason">${esc(reason)}</p>${line}</div></div>`;
   }
 
   function time(iso) {
@@ -789,6 +979,8 @@
   });
 
   $("#grid").addEventListener("click", (e) => {
+    const c = e.target.closest("[data-compare]");
+    if (c) return openCompare(+c.dataset.compare);
     const t = e.target.closest(".tile");
     if (!t) return;
     const id = +t.dataset.id;
@@ -801,24 +993,120 @@
     if (t && e.key === "Enter") openDetail(+t.dataset.id);
   });
 
-  async function toggle(id, kind) {
+  function toggle(id, kind) {
     const p = app.shoot.photos[id - 1];
-    let action;
-    if (kind === "pick") action = p.status === "pick" ? (p.override === "pick" ? null : "unpick") : "pick";
-    else action = p.status === "gem" ? (p.override === "gem" ? null : "ungem") : "gem";
-    const data = await api("/api/override", { body: { id, action } });
-    app.shoot = data.state;
-    renderResults();
-    if (!$("#detail").hidden) openDetail(id);
+    let action, msg;
+    if (kind === "pick") {
+      action = p.status === "pick" ? (p.override === "pick" ? null : "unpick") : "pick";
+      msg = p.status === "pick" ? "Removed from picks" : "Picked";
+    } else if (kind === "gem") {
+      action = p.status === "gem" ? (p.override === "gem" ? null : "ungem") : "gem";
+      msg = p.status === "gem" ? "No longer a hidden gem" : "Marked as a hidden gem";
+    } else {
+      if (p.status === "rejected" && p.override !== "reject") return toast("Already a reject. Pick it to bring it back.");
+      action = p.override === "reject" ? null : "reject";
+      msg = action ? "Rejected" : "Brought back";
+    }
+    return override([{ id, action }], `${msg}: ${p.file}`);
   }
 
+  /* ---------- overrides, with undo ---------- */
+  const undoStack = [];
+
+  // steps: [{id, action}], applied and undone together.
+  async function override(steps, message) {
+    const entry = steps.map(({ id, action }) => ({ id, prev: app.shoot.photos[id - 1].override || null, applied: action }));
+    let data;
+    try {
+      for (const s of steps) data = await api("/api/override", { body: s });
+    } catch (err) {
+      toast(err.message);
+      if (!data) return;
+    }
+    app.shoot = data.state;
+    undoStack.push(entry);
+    refresh();
+    toast(message, { label: "Undo", run: undo });
+  }
+
+  async function undo() {
+    const entry = undoStack.pop();
+    if (!entry) return toast("Nothing to undo");
+    let data;
+    try {
+      // forget: the undone choice taught Goodframes your taste, so take that lesson back too
+      for (const s of [...entry].reverse()) {
+        data = await api("/api/override", { body: { id: s.id, action: s.prev, undo: true, forget: !!s.applied } });
+      }
+    } catch (err) {
+      toast(err.message);
+      if (!data) return;
+    }
+    app.shoot = data.state;
+    refresh();
+    toast("Undone");
+  }
+
+  function refresh() {
+    renderResults();
+    if (!$("#detail").hidden) openDetail(detailId);
+    if (!$("#compare").hidden) openCompare(compareMoment);
+  }
+
+  /* ---------- compare: a moment side by side ---------- */
+  let compareMoment = null;
+  function openCompare(mid) {
+    compareMoment = mid;
+    const m = app.shoot.moments.find((x) => x.id === mid);
+    const all = m.members.map((id) => app.shoot.photos[id - 1]);
+    const live = all.filter((p) => p.status !== "rejected");
+    const frames = live.length > 1 ? live : all;
+    const pick = frames.find((p) => p.status === "pick");
+    $("#compare-title").textContent = `Moment ${m.id} · ${frames.length} frames · ${time(all[0].taken)}`;
+    $("#compare-why").textContent = !pick ? "No pick in this moment yet."
+      : pick.override === "pick" ? `You picked ${pick.file}.${pick.reason ? ` Claude's take: ${pick.reason}` : ""}`
+      : `Why ${pick.file} is the pick: ${pick.reason || pick.why}`;
+    $("#compare-row").innerHTML = frames.map((p, i) => `
+      <figure class="cmp ${p.status}" data-id="${p.id}">
+        <div class="cmp-img"><img src="/api/thumb/${p.fp}" alt="${esc(p.file)}">${i < 9 ? `<kbd class="cmp-n">${i + 1}</kbd>` : ""}</div>
+        <figcaption>
+          <div class="cmp-top"><span class="badge ${p.status}">${LABEL[p.status] || p.status}</span>
+            <span class="score">${p.score != null ? p.score.toFixed(1) : ""}</span></div>
+          <p class="cmp-reason">${esc(p.status === "rejected" ? p.why : p.reason || p.why || "Not reviewed")}</p>
+          ${p.status === "pick" ? `<span class="cmp-chosen">${ICON.check}The pick</span>`
+            : `<button class="btn" data-make-pick="${p.id}">${ICON.check}Make this the pick</button>`}
+        </figcaption></figure>`).join("");
+    $("#compare").hidden = false;
+  }
+
+  // The chosen frame becomes the moment's only pick.
+  function makePick(id) {
+    const p = app.shoot.photos[id - 1];
+    const m = app.shoot.moments.find((x) => x.id === p.moment);
+    const others = m.members.map((mid) => app.shoot.photos[mid - 1]).filter((q) => q.status === "pick" && q.id !== id);
+    if (p.status === "pick" && !others.length) return;
+    const steps = [{ id, action: "pick" }, ...others.map((q) => ({ id: q.id, action: q.override === "pick" ? null : "unpick" }))];
+    return override(steps, `${p.file} is now the pick`);
+  }
+
+  $("#compare-row").addEventListener("click", (e) => {
+    const b = e.target.closest("[data-make-pick]");
+    if (b) return makePick(+b.dataset.makePick);
+    const f = e.target.closest(".cmp");
+    if (f && e.target.closest(".cmp-img")) {
+      $("#compare").hidden = true;
+      openDetail(+f.dataset.id);
+    }
+  });
+
   /* ---------- detail ---------- */
-  let detailId = null;
+  let detailId = null, zoomed = false;
   function openDetail(id) {
     detailId = id;
     const p = app.shoot.photos[id - 1];
     $("#detail-img").src = `/api/thumb/${p.fp}`;
     $("#detail-crop").src = `/api/crop/${p.id}`;
+    $("#detail-main").classList.toggle("zoomed", zoomed);
     const badge = $("#detail-badge");
     badge.className = `badge ${p.status}`;
     badge.textContent = LABEL[p.status] || p.status;
@@ -839,14 +1127,61 @@
     $("#detail-notes").textContent = cut + (p.notes.length ? "Technical: " + p.notes.join(" · ") : "");
     $("#detail-actions").innerHTML = `
       <button class="btn ${p.status === "pick" ? "primary" : ""}" data-act="pick">${ICON.check}${p.status === "pick" ? "Picked" : "Pick"}</button>
-      <button class="btn ${p.status === "gem" ? "primary gem" : ""}" data-act="gem">${ICON.gem}${p.status === "gem" ? "Hidden gem" : "Mark as gem"}</button>`;
+      <button class="btn ${p.status === "gem" ? "primary gem" : ""}" data-act="gem">${ICON.gem}${p.status === "gem" ? "Hidden gem" : "Mark as gem"}</button>
+      <button class="btn ${p.override === "reject" ? "danger" : "ghost"}" data-act="reject">${ICON.reject}${p.override === "reject" ? "Rejected" : "Reject"}</button>`;
     const moment = app.shoot.moments.find((m) => m.id === p.moment);
+    whyNot(p, moment);
+    $("#detail-compare").hidden = moment.members.length < 2;
     $("#detail-strip").innerHTML = moment.members.map((mid) => {
       const q = app.shoot.photos[mid - 1];
       return `<img src="/api/thumb/${q.fp}" data-id="${q.id}" class="${q.id === id ? "cur" : q.status}" title="${esc(q.file)}" alt="">`;
     }).join("");
     $("#detail").hidden = false;
   }
+
+  // Frames Claude passed over: who won the moment, and why, with a way to see or question it.
+  function whyNot(p, moment) {
+    const box = $("#detail-whynot");
+    const passed = ["similar", "below", "candidate"].includes(p.status) || (p.status === "rejected" && p.score != null);
+    box.hidden = !passed;
+    if (!passed) return;
+    const q = moment.members.map((id) => app.shoot.photos[id - 1]).find((x) => x.status === "pick" && x.id !== p.id);
+    const vs = q && q.score != null && p.score != null ? ` (${q.score.toFixed(1)} against this frame's ${p.score.toFixed(1)})` : "";
+    box.innerHTML = `<b>Why not this one?</b>` + (q
+      ? `<div class="vs-row"><img src="/api/thumb/${q.fp}" alt="" data-goto="${q.id}">
+          <p>Claude picked <button class="link" data-goto="${q.id}">${esc(q.file)}</button>${vs}: ${esc(q.reason || q.why || "")}</p></div>`
+      : `<p>${esc(p.why || "It scored below the cut.")}</p>`)
+      + `<div class="row start">${moment.members.length > 1 ? `<button class="btn small" data-compare-here>${icon("compare")}Compare</button>` : ""}
+          <button class="btn ghost small" data-ask>Ask Claude</button></div>`;
+    box.dataset.pick = q ? q.id : "";
+  }
+
+  $("#detail-whynot").addEventListener("click", (e) => {
+    const p = app.shoot.photos[detailId - 1];
+    const go = e.target.closest("[data-goto]");
+    if (go) openDetail(+go.dataset.goto);
+    if (e.target.closest("[data-compare-here]")) openCompare(p.moment);
+    if (e.target.closest("[data-ask]")) {
+      const q = $("#detail-whynot").dataset.pick ? app.shoot.photos[+$("#detail-whynot").dataset.pick - 1] : null;
+      askAbout(p, q);
+    }
+  });
+
+  // Opens the Refine chat with a question about this frame, for the photographer to edit and send.
+  async function askAbout(p, q) {
+    $("#detail").hidden = true;
+    if (!app.settings.has_key) return askForKey();
+    await openBrief();
+    $("#brief-input").value = q ? `Why did you pick ${q.file} over ${p.file}? ` : `Why wasn't ${p.file} picked? `;
+    $("#brief-input").focus();
+  }
+
+  function toggleZoom() {
+    zoomed = !zoomed;
+    $("#detail-main").classList.toggle("zoomed", zoomed);
+  }
+  $("#detail-zoom").addEventListener("click", toggleZoom);
+  $("#detail-compare").addEventListener("click", () => openCompare(app.shoot.photos[detailId - 1].moment));
 
   $("#detail-actions").addEventListener("click", (e) => {
     const b = e.target.closest("[data-act]");
@@ -861,15 +1196,76 @@
     return $$("#grid .tile").map((t) => +t.dataset.id);
   }
 
+  function focusedTile() {
+    const t = document.activeElement && document.activeElement.closest && document.activeElement.closest("#grid .tile");
+    return t ? +t.dataset.id : null;
+  }
+
+  function focusTile(id) {
+    const t = $(`#grid .tile[data-id="${id}"]`);
+    if (!t) return;
+    t.focus({ preventScroll: true });
+    t.scrollIntoView({ block: "nearest" });
+  }
+
+  // The tile in the next row up or down (dir -1 / 1) nearest the current one's column.
+  function tileVertical(id, dir) {
+    const tiles = $$("#grid .tile").map((t) => [t, t.getBoundingClientRect()]);
+    const cur = tiles.find(([t]) => +t.dataset.id === id);
+    if (!cur) return null;
+    const r = cur[1], cx = r.left + r.width / 2;
+    const next = tiles.filter(([, b]) => (dir > 0 ? b.top > r.bottom - 2 : b.bottom < r.top + 2));
+    if (!next.length) return null;
+    const rowTop = (dir > 0 ? Math.min : Math.max)(...next.map(([, b]) => b.top));
+    const row = next.filter(([, b]) => Math.abs(b.top - rowTop) < 4);
+    const dist = ([, b]) => Math.abs(b.left + b.width / 2 - cx);
+    return +row.reduce((a, c) => (dist(c) < dist(a) ? c : a))[0].dataset.id;
+  }
+
+  const KEY_ACTS = { p: "pick", g: "gem", x: "reject" };
+
   document.addEventListener("keydown", (e) => {
-    if (e.key === "Escape") $$(".modal").forEach((m) => (m.hidden = true));
-    if ($("#detail").hidden) return;
+    if (e.key === "Escape") {
+      $$(".modal").forEach((m) => (m.hidden = true));
+      return;
+    }
+    if ($("#results").hidden || e.target.closest("input, textarea, select")) return;
+    const open = $$(".modal").filter((m) => !m.hidden).map((m) => m.id);
+    if (open.some((id) => !["detail", "compare"].includes(id))) return;
+    const k = e.key.length === 1 ? e.key.toLowerCase() : e.key;
+    if ((k === "z" && (e.metaKey || e.ctrlKey)) || (k === "u" && !e.metaKey && !e.ctrlKey)) {
+      e.preventDefault();
+      undo();
+      return;
+    }
+    if (e.metaKey || e.ctrlKey || e.altKey || (k === " " && e.target.closest("button"))) return;
+    if (e.key === "?" || (e.code === "Slash" && e.shiftKey)) {
+      $("#shortcuts").hidden = false;
+      return;
+    }
+    if (open.includes("compare")) {
+      const btn = $$("#compare-row .cmp")[+e.key - 1];
+      if (btn) makePick(+btn.dataset.id);
+      return;
+    }
+    const inDetail = open.includes("detail");
+    const id = inDetail ? detailId : focusedTile();
     const ids = visibleIds();
-    const i = ids.indexOf(detailId);
-    if (e.key === "ArrowRight" && i < ids.length - 1) openDetail(ids[i + 1]);
-    if (e.key === "ArrowLeft" && i > 0) openDetail(ids[i - 1]);
-    if (e.key === "p") toggle(detailId, "pick");
-    if (e.key === "g") toggle(detailId, "gem");
+    const i = ids.indexOf(id);
+    const go = (target) => {
+      if (target == null) return;
+      if (inDetail) openDetail(target);
+      else focusTile(target);
+    };
+    if (!id && ["ArrowRight", "ArrowLeft", "ArrowDown", "ArrowUp", " "].includes(k)) go(ids[0]);
+    else if (k === "ArrowRight" || k === " ") go(ids[i + 1]);
+    else if (k === "ArrowLeft") go(ids[i - 1]);
+    else if ((k === "ArrowDown" || k === "ArrowUp") && !inDetail) go(tileVertical(id, k === "ArrowDown" ? 1 : -1));
+    else if (KEY_ACTS[k] && id) toggle(id, KEY_ACTS[k]);
+    else if (k === "c" && id) openCompare(app.shoot.photos[id - 1].moment);
+    else if (k === "z" && inDetail) toggleZoom();
+    else return;
+    e.preventDefault();
   });
 
   document.addEventListener("click", (e) => {
@@ -886,9 +1282,9 @@
     btn.disabled = true;
     try {
       const r = await api("/api/export", { body: {} });
-      toast(`Copied ${r.picks} picks${r.gems ? ` and ${r.gems} hidden gems` : ""} next to your originals`, {
-        label: "Show in Finder", run: () => api("/api/reveal", { body: { folder: r.picks_dir } }),
-      });
+      done({ icon: "export", title: `Copied ${r.picks} pick${r.picks === 1 ? "" : "s"}${r.gems ? ` and ${r.gems} hidden gem${r.gems > 1 ? "s" : ""}` : ""}`,
+        text: "They're in the Goodframes folder next to your originals, numbered in the order of the final edit. Your originals weren't moved or changed.",
+        actions: [{ label: "Show in Finder", run: () => api("/api/reveal", { body: { folder: r.picks_dir } }) }] });
     } catch (err) {
       toast(err.message);
     } finally {

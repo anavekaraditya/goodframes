@@ -18,7 +18,7 @@ from pydantic import BaseModel
 
 from .. import settings
 from ..engine import brief, export, pipeline, taste
-from ..engine.ingest import open_photo
+from ..engine.ingest import describe_folder, memory_cards, open_photo
 from ..engine.review import MODELS, SCREEN_MODEL, ClaudeReviewer, ReviewError, validate_key
 from ..engine.store import Store, summary
 
@@ -135,6 +135,7 @@ class SettingsIn(BaseModel):
     model: str | None = None
     theme: str | None = None
     two_tier: bool | None = None
+    tile_size: int | None = None
 
 
 class ShootSettingsIn(BaseModel):
@@ -150,6 +151,7 @@ def get_settings():
         "model": s["model"],
         "theme": s["theme"],
         "two_tier": s["two_tier"],
+        "tile_size": s["tile_size"],
         "models": [{"id": k, "label": v[0], "in": v[1], "out": v[2]} for k, v in MODELS.items()],
         "has_key": DEMO or bool(settings.get_api_key()),
         "recent": _recent(),
@@ -233,14 +235,16 @@ def open_shoot(body: FolderIn):
     folder = os.path.abspath(os.path.expanduser(body.folder.strip()))
     if not os.path.isdir(folder):
         raise HTTPException(400, "That folder doesn't exist.")
-    settings.remember_folder(folder)
     Session.folder = folder
 
     def job():
         shoot = pipeline.analyze(folder, Store(folder), on_event=events.publish)
+        if shoot.photos:  # an empty folder isn't a shoot to come back to
+            settings.remember_folder(folder)
         Session.shoot = shoot
         events.publish({"type": "analyzed", "state": pipeline.state(shoot),
-                        "estimate": _estimate(shoot) if shoot.photos else None})
+                        "estimate": _estimate(shoot) if shoot.photos else None,
+                        "folder_info": None if shoot.photos else describe_folder(folder)})
 
     _start_job("analysis", job)
     return {"ok": True}
@@ -352,14 +356,16 @@ def start_review(body: ReviewIn):
 class OverrideIn(BaseModel):
     id: int
     action: str | None
+    undo: bool = False
+    forget: bool = False
 
 
 @app.post("/api/override")
 def override(body: OverrideIn):
     shoot = _need_shoot()
-    if body.action not in (None, "pick", "unpick", "gem", "ungem"):
+    if body.action not in (None, "pick", "unpick", "gem", "ungem", "reject"):
         raise HTTPException(400, "Unknown action")
-    pipeline.set_override(shoot, body.id, body.action)
+    pipeline.set_override(shoot, body.id, body.action, undo=body.undo, forget=body.forget)
     return {"state": pipeline.state(shoot)}
 
 
@@ -400,6 +406,12 @@ def open_url(body: UrlIn):
 
 def _recent():
     return [f for f in settings.load()["recent"] if os.path.isdir(f)]
+
+
+@app.get("/api/cards")
+def cards():
+    """Camera cards that are plugged in, so the home screen can offer to cull them."""
+    return memory_cards()
 
 
 @app.get("/api/recent")

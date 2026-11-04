@@ -23,7 +23,13 @@ From three hundred frames to the ones worth editing. A Mac app that culls a phot
    to a set without repeats. Selection size in Settings moves the cut for free.
 6. **You decide**: browse picks, gems and rejects, override anything, and copy the results to
    `Goodframes/Picks` and `Goodframes/Hidden Gems` next to your originals. Your overrides teach
-   later reviews your taste.
+   later reviews your taste, and undoing one takes the lesson back. **Compare** shows a moment's
+   frames side by side with Claude's reasons, and every passed-over frame says which frame beat
+   it and why. It all works from the keyboard: P pick, G gem, X reject, C compare, Z 100% zoom,
+   U undo (`?` lists them).
+
+Open a shoot by choosing a folder, dropping one on the window, or from the banner that appears
+when a camera card is plugged in.
 
 Reviews, overrides and analysis are cached per shoot in `<folder>/.photo-cull/cull.db`, so
 re-opening a shoot costs nothing. Originals are never moved or modified.

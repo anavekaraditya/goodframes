@@ -23,6 +23,11 @@
   <symbol id="i-key" viewBox="0 0 24 24"><circle cx="7.8" cy="15.7" r="4.3" style="fill:var(--ifill,none)"/><circle cx="6.8" cy="16.7" r=".9" style="fill:var(--iknock,currentColor);stroke:none"/><path d="M10.9 12.6L19.5 4M16.3 7.2l2.6 2.6M13.8 9.7l1.8 1.8"/></symbol>
   <symbol id="i-refine" viewBox="0 0 24 24"><path d="M4 6.5A2.5 2.5 0 0 1 6.5 4h11A2.5 2.5 0 0 1 20 6.5v7.5a2.5 2.5 0 0 1-2.5 2.5h-7L6 20.3v-3.8A2.5 2.5 0 0 1 4 14z" style="fill:var(--ifill,none)"/><path d="M8.5 9h7M8.5 12h4.5" style="stroke:var(--iknock,currentColor)"/></symbol>
   <symbol id="i-export" viewBox="0 0 24 24"><path d="M12 3.5v10M8 9.8l4 3.9 4-3.9"/><path d="M4.5 14v3.5a2.5 2.5 0 0 0 2.5 2.5h10a2.5 2.5 0 0 0 2.5-2.5V14"/></symbol>
+  <symbol id="i-reject" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5" style="fill:var(--ifill,none)"/><path d="M6 18L18 6" style="stroke:var(--iknock,currentColor)"/></symbol>
+  <symbol id="i-compare" viewBox="0 0 24 24"><rect x="2.8" y="5" width="8.4" height="14" rx="1.8" style="fill:var(--ifill,none)"/><rect x="12.8" y="5" width="8.4" height="14" rx="1.8" style="fill:var(--ifill,none)"/></symbol>
+  <symbol id="i-grid-small" viewBox="0 0 24 24"><rect x="4" y="4" width="6.5" height="6.5" rx="1.2"/><rect x="13.5" y="4" width="6.5" height="6.5" rx="1.2"/><rect x="4" y="13.5" width="6.5" height="6.5" rx="1.2"/><rect x="13.5" y="13.5" width="6.5" height="6.5" rx="1.2"/></symbol>
+  <symbol id="i-grid-large" viewBox="0 0 24 24"><rect x="4" y="5" width="16" height="14" rx="2"/></symbol>
+  <symbol id="i-card" viewBox="0 0 24 24"><path d="M7 3.5h7.5l4 4V19a1.5 1.5 0 0 1-1.5 1.5H7A1.5 1.5 0 0 1 5.5 19V5A1.5 1.5 0 0 1 7 3.5z" style="fill:var(--ifill,none)"/><path d="M9 3.5v3.5M11.5 3.5v3.5M14 3.5v3.5" style="stroke:var(--iknock,currentColor)"/></symbol>
   <symbol id="i-send" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9" style="fill:var(--ifill,none)"/><path d="M12 16.5v-9M8.3 11L12 7.3l3.7 3.7" style="stroke:var(--iknock,currentColor)"/></symbol>
   <symbol id="i-refresh" viewBox="0 0 24 24"><path d="M19.5 12a7.5 7.5 0 1 1-2.2-5.3"/><path d="M19.8 4v4.8H15"/></symbol>
   <symbol id="i-redo" viewBox="0 0 24 24"><path d="M4.5 12a7.5 7.5 0 1 0 2.2-5.3"/><path d="M4.2 4v4.8H9"/></symbol>
@@ -119,13 +124,14 @@
       <button id="choose-folder" class="dropzone">
         <span class="dz-icon"><svg class="i" aria-hidden="true"><use href="#i-folder-add"/></svg></span>
         <span class="dz-text"><span class="dz-title">Choose a shoot</span>
-          <span class="dz-sub">A folder of JPEG, HEIC or RAW photos</span></span>
+          <span class="dz-sub" id="dz-sub">A folder of JPEG, HEIC or RAW photos</span></span>
       </button>
       <form id="path-form" class="path-form" hidden>
         <input id="path-input" placeholder="/Users/you/Pictures/Shoot" spellcheck="false">
         <button class="btn">Open</button>
       </form>
     </div>
+    <ul id="cards" class="cards" hidden aria-live="polite"></ul>
     <div id="recent-wrap" hidden>
       <h2 class="eyebrow">Recent shoots</h2>
       <ul id="recent" class="shoots"></ul>
@@ -143,6 +149,7 @@
       <li data-step="moments">Group</li><li data-step="review">Review</li><li data-step="done">Done</li>
     </ol>
     <div class="status" id="status" aria-live="polite"></div>
+    <button class="btn" id="peek" hidden><svg class="i" aria-hidden="true"><use href="#i-pick"/></svg>Picks so far <b id="peek-count">0</b></button>
   </header>
   <div id="stage">
     <div id="clusters"></div>
@@ -188,7 +195,14 @@
       <span id="update-text"></span>
       <button class="btn" id="update-review" type="button"><svg class="i" aria-hidden="true"><use href="#i-refresh"/></svg>Review again</button>
     </div>
-    <p class="tab-intro" id="tab-intro"></p>
+    <p class="notice" id="unreadable" hidden></p>
+    <div class="results-bar">
+      <p class="tab-intro" id="tab-intro"></p>
+      <label class="size-ctl" title="Thumbnail size"><svg class="i" aria-hidden="true"><use href="#i-grid-small"/></svg>
+        <span class="sr-only">Thumbnail size</span><input type="range" id="tile-size" min="160" max="420" step="20">
+        <svg class="i" aria-hidden="true"><use href="#i-grid-large"/></svg></label>
+      <button class="icon-btn keys-btn" id="shortcuts-btn" aria-label="Keyboard shortcuts" title="Keyboard shortcuts (?)">?</button>
+    </div>
     <div id="grid" class="grid"></div>
   </div>
 </section>
@@ -229,21 +243,77 @@
 <div class="modal" id="detail" hidden role="dialog" aria-modal="true" aria-label="Photo details">
   <div class="detail">
     <button class="icon-btn close" data-close aria-label="Close"><svg class="i" aria-hidden="true"><use href="#i-close"/></svg></button>
-    <div class="detail-main">
+    <div class="detail-main" id="detail-main">
       <img id="detail-img" alt="">
-      <figure class="crop"><img id="detail-crop" alt="100% crop"><figcaption>100% focus check</figcaption></figure>
+      <figure class="crop" id="detail-zoom" title="Zoom to 100% (Z)"><img id="detail-crop" alt="100% crop"><figcaption>100% focus check · <kbd>Z</kbd></figcaption></figure>
     </div>
     <aside class="detail-side">
       <div class="badge" id="detail-badge"></div>
       <h3 id="detail-title"></h3>
       <p id="detail-reason" class="reason"></p>
+      <div id="detail-whynot" class="whynot" hidden></div>
       <dl class="scores" id="detail-scores"></dl>
       <div id="detail-recipe" class="recipe" hidden></div>
       <p id="detail-notes" class="notes"></p>
       <div class="detail-actions" id="detail-actions"></div>
-      <h4 class="eyebrow">Same moment</h4>
+      <div class="strip-head"><h4 class="eyebrow">Same moment</h4>
+        <button class="btn ghost small" id="detail-compare"><svg class="i" aria-hidden="true"><use href="#i-compare"/></svg>Compare <kbd>C</kbd></button></div>
       <div class="strip" id="detail-strip"></div>
+      <p class="keys-hint"><kbd>P</kbd> pick <kbd>G</kbd> gem <kbd>X</kbd> reject <kbd>U</kbd> undo <kbd>?</kbd> all keys</p>
     </aside>
+  </div>
+</div>
+
+<!-- Compare: one moment's frames side by side -->
+<div class="modal" id="compare" hidden role="dialog" aria-modal="true" aria-labelledby="compare-title">
+  <div class="sheet compare">
+    <button class="icon-btn close" data-close aria-label="Close"><svg class="i" aria-hidden="true"><use href="#i-close"/></svg></button>
+    <header class="compare-head">
+      <h2 id="compare-title"></h2>
+      <p class="hint" id="compare-why"></p>
+    </header>
+    <div class="compare-row" id="compare-row"></div>
+    <p class="keys-hint"><kbd>1</kbd>–<kbd>9</kbd> make that frame the pick <kbd>U</kbd> undo <kbd>Esc</kbd> close</p>
+  </div>
+</div>
+
+<!-- Picks so far, while Claude is still reviewing -->
+<div class="modal" id="peek-modal" hidden role="dialog" aria-modal="true" aria-labelledby="peek-title">
+  <div class="sheet peek">
+    <button class="icon-btn close" data-close aria-label="Close"><svg class="i" aria-hidden="true"><use href="#i-close"/></svg></button>
+    <h2 id="peek-title">Picks so far</h2>
+    <p class="hint">Claude's best frame from each moment reviewed so far. The final edit can still reorder or trim them.</p>
+    <div class="grid peek-grid" id="peek-grid"></div>
+  </div>
+</div>
+
+<!-- Keyboard shortcuts -->
+<div class="modal" id="shortcuts" hidden role="dialog" aria-modal="true" aria-labelledby="shortcuts-title">
+  <div class="sheet keys">
+    <button class="icon-btn close" data-close aria-label="Close"><svg class="i" aria-hidden="true"><use href="#i-close"/></svg></button>
+    <h2 id="shortcuts-title">Keyboard shortcuts</h2>
+    <dl class="keys-list">
+      <dt><kbd>←</kbd> <kbd>→</kbd> <kbd>↑</kbd> <kbd>↓</kbd></dt><dd>Move between photos</dd>
+      <dt><kbd>Space</kbd></dt><dd>Next photo</dd>
+      <dt><kbd>Return</kbd></dt><dd>Open the photo</dd>
+      <dt><kbd>P</kbd></dt><dd>Pick, or remove from picks</dd>
+      <dt><kbd>G</kbd></dt><dd>Hidden gem, or remove</dd>
+      <dt><kbd>X</kbd></dt><dd>Reject, or bring back</dd>
+      <dt><kbd>C</kbd></dt><dd>Compare the photo's moment side by side</dd>
+      <dt><kbd>Z</kbd></dt><dd>Zoom to 100%</dd>
+      <dt><kbd>U</kbd> or <kbd>⌘Z</kbd></dt><dd>Undo</dd>
+      <dt><kbd>Esc</kbd></dt><dd>Close</dd>
+    </dl>
+  </div>
+</div>
+
+<!-- Finished an action: what happened and where to go next -->
+<div class="modal" id="done-sheet" hidden role="dialog" aria-modal="true" aria-labelledby="done-title">
+  <div class="sheet done">
+    <div class="done-icon" id="done-icon" aria-hidden="true"></div>
+    <h2 id="done-title"></h2>
+    <p class="hint" id="done-text"></p>
+    <div class="done-actions" id="done-actions"></div>
   </div>
 </div>
 
@@ -341,6 +411,8 @@
 </div>
 
 <div class="toast" id="toast" role="status" hidden></div>
+<div class="drop-overlay" id="drop-overlay" aria-hidden="true"><div><svg class="i" aria-hidden="true"><use href="#i-folder-add"/></svg>
+  <b>Drop a folder to cull it</b><span>Or a photo from inside one</span></div></div>
 
 <script src="/ui/vendor/gsap.min.js"></script>
 <script src="/ui/stage.js"></script>

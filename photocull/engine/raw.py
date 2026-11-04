@@ -48,7 +48,11 @@ def open_raw(path, max_edge=None):
     cg = Quartz.CGImageSourceCreateThumbnailAtIndex(_source(path), 0, opts)
     if cg is None:
         raise OSError(f"cannot decode RAW file {os.path.basename(path)}")
-    return _to_pil(cg)
+    img = _to_pil(cg)
+    # A file ImageIO can't unpack comes back as a blank frame rather than an error.
+    if all(lo == hi for lo, hi in img.getextrema()):
+        raise OSError(f"cannot decode RAW file {os.path.basename(path)}")
+    return img
 
 
 def _props(path):

@@ -147,3 +147,48 @@ def ingest(folder, store, on_progress=lambda **kw: None):
                 results[name] = dict(data, fp=fp, file=name)
                 on_progress(fp=fp, file=name, i=done, n=len(names), cached=False)
     return [results[n] for n in names if n in results]
+
+
+VIDEO_EXTS = {".mov", ".mp4", ".m4v", ".avi", ".mts", ".mxf"}
+
+
+def _subfolders_with_photos(folder):
+    out = []
+    for name in sorted(os.listdir(folder)):
+        path = os.path.join(folder, name)
+        if name.startswith(".") or not os.path.isdir(path):
+            continue
+        try:
+            n = len(list_photos(path))
+        except OSError:
+            continue
+        if n:
+            out.append({"name": name, "folder": path, "photos": n})
+    return out
+
+
+def describe_folder(folder):
+    """Why a folder had no photos: videos only, or the photos sit one level down (as on a card)."""
+    names = [n for n in os.listdir(folder) if not n.startswith(".")]
+    return {"videos": sum(os.path.splitext(n)[1].lower() in VIDEO_EXTS for n in names),
+            "subfolders": _subfolders_with_photos(folder)}
+
+
+def memory_cards(volumes="/Volumes"):
+    """Mounted camera cards: volumes with a DCIM folder, and the photo folders inside it."""
+    cards = []
+    try:
+        names = sorted(os.listdir(volumes))
+    except OSError:
+        return cards
+    for name in names:
+        dcim = os.path.join(volumes, name, "DCIM")
+        if not os.path.isdir(dcim):
+            continue
+        try:
+            folders = _subfolders_with_photos(dcim)
+        except OSError:  # card pulled out while we looked
+            continue
+        if folders:
+            cards.append({"name": name, "folders": folders, "photos": sum(f["photos"] for f in folders)})
+    return cards

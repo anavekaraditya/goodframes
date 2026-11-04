@@ -329,11 +329,14 @@ class ClaudeReviewer:
             opening[-1]["cache_control"] = {"type": "ephemeral"}
         opening.append({"type": "text", "text": f"These {len(sample)} frames are a sample from across the shoot."})
         turns = [{"role": "user", "content": opening}]
-        for m in messages[-MAX_CHAT_MESSAGES:]:
+        recent = messages[-MAX_CHAT_MESSAGES:]
+        for m in recent:
             turns.append({"role": m["role"], "content": m["text"]})
-        if turns[-1]["role"] == "user":
-            turns[-1] = {"role": "user", "content": f"{turns[-1]['content']}\n\n{context}"}
-        else:  # the opening turn
+        # The context rides on the photographer's latest message. Check the chat, not turns[-1]: on the
+        # opening turn that is the image block, and formatting it into a string bills every image as text.
+        if recent and recent[-1]["role"] == "user":
+            turns[-1] = {"role": "user", "content": f"{recent[-1]['text']}\n\n{context}"}
+        else:
             turns.append({"role": "user", "content": f"Start the conversation.\n\n{context}"})
         return self._call(BRIEF_CHAT_PROMPT, turns, BRIEF_CHAT_SCHEMA, max_tokens=3000, effort="low")
 

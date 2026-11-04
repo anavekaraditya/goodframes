@@ -1,9 +1,10 @@
 import hashlib
 import os
 
-from conftest import FakeReviewer
+import numpy as np
+from conftest import FakeReviewer, _scene, write_dng
 
-from photocull.engine import evaluate, export, pipeline, review, scoring
+from photocull.engine import evaluate, export, ingest, pipeline, review, scoring
 from photocull.engine.store import Store
 
 
@@ -604,3 +605,25 @@ def test_profile_reaches_the_brief(shoot_dir):
     pipeline.confirm_brief(shoot)
     assert taste.LOOKS["candid"] in shoot.brief["review_prompt"]
     assert taste.KEEP["tight"] in brief.load(shoot.store)["applied"]["edit_prompt"]
+
+
+def test_raw_frames_are_analysed_upright(tmp_path, monkeypatch):
+    monkeypatch.setenv("PHOTOCULL_HOME", str(tmp_path / "home"))
+    folder = tmp_path / "raw"
+    folder.mkdir()
+    write_dng(str(folder / "DSC_0001.dng"), np.asarray(_scene(7, 900, 600)), orientation=6)
+    p = _analyze(str(folder)).photos[0]
+    assert (p["width"], p["height"]) == (600, 900)
+    assert p["taken"] == "2026-10-20T17:30:00"
+    assert ingest.open_photo(str(folder / "DSC_0001.dng")).size == (600, 900)
+
+
+def test_raw_plus_jpeg_is_one_frame_and_exports_together(shoot_dir):
+    write_dng(os.path.join(shoot_dir, "IMG_600.dng"), np.asarray(_scene(6, 600, 400)))
+    shoot = _analyze(shoot_dir)
+    assert "IMG_600.jpg" in _by_file(shoot) and "IMG_600.dng" not in _by_file(shoot)
+    pipeline.review(shoot, FakeReviewer())
+    assert _by_file(shoot)["IMG_600.jpg"]["status"] == "pick"
+    picks = os.listdir(export.export(shoot)["picks_dir"])
+    jpg = next(n for n in picks if n.endswith("_IMG_600.jpg"))
+    assert jpg.replace(".jpg", ".dng") in picks

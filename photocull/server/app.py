@@ -14,11 +14,11 @@ import webbrowser
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import FileResponse, HTMLResponse, Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
-from PIL import Image, ImageOps
 from pydantic import BaseModel
 
 from .. import settings
 from ..engine import brief, export, pipeline, taste
+from ..engine.ingest import open_photo
 from ..engine.review import MODELS, SCREEN_MODEL, ClaudeReviewer, ReviewError, validate_key
 from ..engine.store import Store, summary
 
@@ -433,22 +433,21 @@ def crop(pid: int):
     """A 100% crop around the face (or the sharpest area) of the original file."""
     shoot = _need_shoot()
     p = shoot.by_id(pid)
-    with Image.open(os.path.join(shoot.folder, p["file"])) as im:
-        im = ImageOps.exif_transpose(im).convert("RGB")
-        W, H = im.size
-        s = max(W, H) / 1024
-        faces = p["metrics"]["faces"]
-        if faces:
-            x, y, w, h = max(faces, key=lambda f: f["box"][2])["box"]
-            cx, cy = (x + w / 2) * s, (y + h / 2) * s
-        else:
-            r, c = p["metrics"]["sharp_tile"]
-            tw, th = W / 6, H / 6
-            cx, cy = (c + 0.5) * tw, (r + 0.5) * th
-        half = 400
-        cx, cy = min(max(cx, half), W - half), min(max(cy, half), H - half)
-        box = tuple(int(v) for v in (cx - half, cy - half, cx + half, cy + half))
-        out = im.crop(box)
+    im = open_photo(os.path.join(shoot.folder, p["file"]))
+    W, H = im.size
+    s = max(W, H) / 1024
+    faces = p["metrics"]["faces"]
+    if faces:
+        x, y, w, h = max(faces, key=lambda f: f["box"][2])["box"]
+        cx, cy = (x + w / 2) * s, (y + h / 2) * s
+    else:
+        r, c = p["metrics"]["sharp_tile"]
+        tw, th = W / 6, H / 6
+        cx, cy = (c + 0.5) * tw, (r + 0.5) * th
+    half = 400
+    cx, cy = min(max(cx, half), W - half), min(max(cy, half), H - half)
+    box = tuple(int(v) for v in (cx - half, cy - half, cx + half, cy + half))
+    out = im.crop(box)
     buf = io.BytesIO()
     out.save(buf, "JPEG", quality=90)
     return Response(buf.getvalue(), media_type="image/jpeg")

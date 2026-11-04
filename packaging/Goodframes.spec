@@ -19,7 +19,7 @@ a = Analysis(
     hiddenimports=[
         "uvicorn.logging", "uvicorn.loops.auto", "uvicorn.protocols.http.auto",
         "uvicorn.protocols.websockets.auto", "uvicorn.lifespan.on",
-        "keyring.backends.macOS", "pillow_heif",
+        "keyring.backends.macOS", "pillow_heif", "Quartz",
     ],
     excludes=["tkinter", "matplotlib", "pytest", "IPython"],
 )

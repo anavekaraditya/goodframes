@@ -9,6 +9,7 @@ import numpy as np
 from PIL import Image, ImageOps
 
 from . import quality
+from .raw import RAW_EXTS, is_raw, open_raw, raw_size, read_raw_exif
 from .store import fingerprint
 
 try:
@@ -17,7 +18,8 @@ try:
 except ImportError:
     pass
 
-EXTS = {".jpg", ".jpeg", ".heic", ".heif"}
+RENDERED_EXTS = {".jpg", ".jpeg", ".heic", ".heif"}
+EXTS = RENDERED_EXTS | RAW_EXTS
 THUMB_EDGE = 1024
 METRICS_VERSION = 2
 
@@ -60,26 +62,58 @@ def color_hist(bgr):
     return [round(float(v), 5) for v in h.ravel()]
 
 
-def process(path, thumb_path):
-    """Worker: decode, write thumbnail, hash, measure. Runs in a subprocess."""
+def open_photo(path):
+    """The full-resolution frame, upright, as RGB."""
+    if is_raw(path):
+        return open_raw(path)
+    with Image.open(path) as img:
+        return ImageOps.exif_transpose(img).convert("RGB")
+
+
+def _decode(path):
+    """(exif info with the full upright size, image of at most THUMB_EDGE px)."""
+    if is_raw(path):
+        info = read_raw_exif(path)
+        info["width"], info["height"] = raw_size(path)
+        return info, open_raw(path, THUMB_EDGE)
     with Image.open(path) as img:
         info = read_exif(img, path)
         img = ImageOps.exif_transpose(img).convert("RGB")
-        info["width"], info["height"] = img.size
-        img.thumbnail((THUMB_EDGE, THUMB_EDGE), Image.LANCZOS)
-        img.save(thumb_path, "JPEG", quality=85)
-        info["phash"] = str(imagehash.phash(img))
-        info["dhash"] = str(imagehash.dhash(img))
-        bgr = cv2.cvtColor(np.asarray(img), cv2.COLOR_RGB2BGR)
+    info["width"], info["height"] = img.size
+    img.thumbnail((THUMB_EDGE, THUMB_EDGE), Image.LANCZOS)
+    return info, img
+
+
+def process(path, thumb_path):
+    """Worker: decode, write thumbnail, hash, measure. Runs in a subprocess."""
+    info, img = _decode(path)
+    img.save(thumb_path, "JPEG", quality=85)
+    info["phash"] = str(imagehash.phash(img))
+    info["dhash"] = str(imagehash.dhash(img))
+    bgr = cv2.cvtColor(np.asarray(img), cv2.COLOR_RGB2BGR)
     info["hist"] = color_hist(bgr)
     info["metrics"] = quality.measure(bgr)
     return info
 
 
+def _photo_files(folder):
+    return [n for n in os.listdir(folder)
+            if os.path.splitext(n)[1].lower() in EXTS and not n.startswith(".")]
+
+
 def list_photos(folder):
-    names = [n for n in os.listdir(folder)
-             if os.path.splitext(n)[1].lower() in EXTS and not n.startswith(".")]
-    return sorted(names)
+    """One file per frame. A RAW+JPEG pair is analysed from the JPEG, the camera's own rendering."""
+    by_stem = {}
+    for n in _photo_files(folder):
+        by_stem.setdefault(os.path.splitext(n)[0], []).append(n)
+    return sorted(min(ns, key=lambda n: (os.path.splitext(n)[1].lower() not in RENDERED_EXTS, n))
+                  for ns in by_stem.values())
+
+
+def companions(folder, name):
+    """The other files of the same frame (the RAW beside a JPEG, or the reverse)."""
+    stem = os.path.splitext(name)[0]
+    return sorted(n for n in _photo_files(folder) if n != name and os.path.splitext(n)[0] == stem)
 
 
 def ingest(folder, store, on_progress=lambda **kw: None):

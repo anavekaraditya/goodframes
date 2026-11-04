@@ -2,6 +2,8 @@
 import os
 import shutil
 
+from .ingest import companions
+
 PICKS_DIR = os.path.join("Goodframes", "Picks")
 GEMS_DIR = os.path.join("Goodframes", "Hidden Gems")
 
@@ -33,9 +35,10 @@ def export(shoot):
         os.makedirs(os.path.join(folder, sub), exist_ok=True)
         width = max(2, len(str(len(items))))
         for rank, p in enumerate(items, 1):
-            name = f"{rank:0{width}d}_{p['file']}"
-            shutil.copy2(os.path.join(folder, p["file"]), os.path.join(folder, sub, name))
-            manifest.append(os.path.join(sub, name))
+            for file in [p["file"]] + companions(folder, p["file"]):  # a RAW travels with its JPEG
+                name = f"{rank:0{width}d}_{file}"
+                shutil.copy2(os.path.join(folder, file), os.path.join(folder, sub, name))
+                manifest.append(os.path.join(sub, name))
     if out["gems"]:
         lines = ["Hidden gems - strong photos that need an edit to shine.\n"]
         for rank, p in enumerate(out["gems"], 1):

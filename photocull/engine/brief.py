@@ -12,6 +12,7 @@ RERUNS = ("final_edit", "full_review")
 MAX_ITEMS = 12
 MAX_ITEM_CHARS = 200
 MAX_MESSAGE_CHARS = 2000
+MAX_TARGET = 100  # the final edit ranks at most this many frames (review.MAX_FINALISTS)
 
 
 def _new_state():
@@ -44,7 +45,7 @@ def normalize(data):
         "priorities": clean_list(data.get("priorities")),
         "avoid": clean_list(data.get("avoid")),
         "look": str(data.get("look") or "").strip()[:MAX_ITEM_CHARS],
-        "target_count": target if isinstance(target, int) and target > 0 else None,
+        "target_count": min(target, MAX_TARGET) if isinstance(target, int) and target > 0 else None,
         "per_moment": "few" if data.get("per_moment") == "few" else "one",
         "technical_tolerance": "loose" if data.get("technical_tolerance") == "loose" else "standard",
     }

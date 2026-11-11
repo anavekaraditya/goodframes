@@ -315,6 +315,17 @@ def brief_message(body: BriefMessageIn):
     return _chat_turn(_need_shoot(), text[:brief.MAX_MESSAGE_CHARS])
 
 
+class TargetIn(BaseModel):
+    target_count: int | None = None
+
+
+@app.post("/api/brief/target")
+def brief_target(body: TargetIn):
+    shoot = _need_shoot()
+    pipeline.set_target(shoot, body.target_count)
+    return _brief_view(shoot)
+
+
 @app.post("/api/brief/standard")
 def brief_standard():
     shoot = _need_shoot()

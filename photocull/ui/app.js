@@ -656,12 +656,17 @@
     renderMessages(pending);
     const rows = [
       ["This shoot", d.shoot], ["Keep above all", d.priorities.join(", ")], ["Don't want", d.avoid.join(", ")],
-      ["Look", d.look], ["Final count", d.target_count || "Claude's recommendation"],
+      ["Look", d.look],
       ["Per moment", d.per_moment === "few" ? "Several frames can stay" : "The best frame"],
       ["Technical check", d.technical_tolerance === "loose" ? "Loose: more frames reach Claude" : "Standard"],
       ["My style", b.style.join(", ")],
     ].filter(([, v]) => v);
     $("#brief-fields").innerHTML = rows.map(([k, v]) => `<div><dt>${k}</dt><dd>${esc(v)}</dd></div>`).join("");
+    if (document.activeElement !== $("#brief-count")) $("#brief-count").value = d.target_count || "";
+    $("#brief-count-clear").hidden = !d.target_count;
+    $("#brief-count-hint").textContent = d.target_count
+      ? `The cull keeps your best ${d.target_count}. With fewer moments than that, the strongest extra frames fill the set.`
+      : "Leave it empty and Claude recommends how many to keep.";
     $("#brief-style").hidden = !b.suggestions.length;
     $("#brief-suggestions").innerHTML = b.suggestions.map((s) =>
       `<label><input type="checkbox" value="${esc(s)}"> <span>${esc(s)}</span></label>`).join("");
@@ -670,7 +675,7 @@
     $("#brief-rerun").textContent = work;
     const confirm = $("#brief-confirm");
     confirm.textContent = est.requests ? `Confirm and start · about $${est.cost.toFixed(2)}` : "Confirm · no cost";
-    confirm.disabled = app.briefBusy;
+    confirm.disabled = app.briefBusy || countTimer !== null;
     $("#brief-send").disabled = $("#brief-standard").disabled = app.briefBusy;
   }
 
@@ -703,6 +708,41 @@
       e.preventDefault();
       $("#brief-form").requestSubmit();
     }
+  });
+
+  // The count is part of the brief, so the confirm button waits until the server has it.
+  let countTimer = null;
+  async function saveCount() {
+    const raw = $("#brief-count").value.trim();
+    const n = raw ? Math.round(+raw) : null;
+    try {
+      app.brief = await api("/api/brief/target", { body: { target_count: n && n > 0 ? n : null } });
+      $("#brief-error").textContent = "";
+    } catch (err) {
+      $("#brief-error").textContent = `The photo count wasn't saved: ${err.message}`;
+    }
+    countTimer = null;
+    renderBrief();
+  }
+
+  $("#brief-count").addEventListener("input", () => {
+    clearTimeout(countTimer);
+    countTimer = setTimeout(saveCount, 450);
+    $("#brief-confirm").disabled = true;
+  });
+  $("#brief-count").addEventListener("keydown", (e) => {
+    e.stopPropagation();
+    if (e.key === "Escape") $("#brief").hidden = true;
+  });
+  $("#brief-count").addEventListener("blur", () => {
+    if (countTimer === null) return;
+    clearTimeout(countTimer);
+    saveCount();
+  });
+  $("#brief-count-clear").addEventListener("click", () => {
+    clearTimeout(countTimer);
+    $("#brief-count").value = "";
+    saveCount();
   });
 
   $("#brief-standard").addEventListener("click", async () => {
@@ -903,6 +943,11 @@
     }
     $("#unreadable").hidden = !(app.unreadable || []).length;
     if (!$("#unreadable").hidden) $("#unreadable").textContent = unreadableText();
+    const target = app.shoot.target, sel = app.shoot.selection;
+    const have = sel ? sel.total : app.shoot.counts.pick;
+    $("#shortfall").hidden = !(target && have < target && reviewed(app.shoot));
+    $("#shortfall").textContent = `You asked for ${target} photos, but only ${have} ${have === 1 ? "frame was" : "frames were"} `
+      + "strong enough to keep. You can add more yourself from the Moments tab.";
     const unmet = app.shoot.unmet || [];
     $("#unmet").hidden = !unmet.length;
     $("#unmet").textContent = unmet.length ? `No frame found for: ${unmet.join(", ")}` : "";

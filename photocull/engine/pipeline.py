@@ -454,6 +454,7 @@ def summary(p):
         "rank": p.get("rank"), "shoot_type": r.get("shoot_type"), "best": bool(r.get("best")),
         "subscores": {k: r[k] for k in ("impact", "moment", "light", "composition", "subject_focus") if k in r},
         "notes": p.get("notes", []), "override": p.get("override"),
+        "aesthetic": round((a["score"] + 1) * 5, 1) if (a := p["metrics"].get("aesthetics")) else None,
         "w": p["width"], "h": p["height"], "taken": p["taken"],
     }
 

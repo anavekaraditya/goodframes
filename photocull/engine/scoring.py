@@ -10,10 +10,14 @@ MIN_SHARP_IN_BURST = 0.3   # sharpness relative to the burst's sharpest below wh
 SOFT_RATIO = 0.6           # relative sharpness below which a frame starts losing points
 UNUSABLE_DARK = 6          # mean luma below which a frame holds nothing to judge
 UNUSABLE_CLIPPED = 0.85    # share of clipped pixels above which a frame holds nothing to judge
-# A sibling's detected eyes count as evidence of a blink only from a frame this comparable:
+# A sibling's open eyes count as evidence of a blink only from a frame this comparable:
 EYES_MIN_SHARP = 0.8       # sharpness relative to the frame judged (face sharpness shifts with lids)
 EYES_EXPOSURE_GAP = 0.1    # exposure-score shortfall allowed
 EYES_LUMA_GAP = 20         # mean-luma difference allowed: Haar finds eyes more easily once brightened
+# Vision eye openness (outline height / width): about 0.3 wide open, 0.10-0.18 in a big smile.
+EYES_CLOSED = 0.12         # below this a frame can be a blink, if a comparable sibling is far more open
+BLINK_RATIO = 0.6          # ...at most this share of the sibling's openness
+EYES_SHUT = 0.09           # below this the eyes look shut even with nothing to compare against
 
 
 def _pctl(values, q, default):
@@ -49,16 +53,21 @@ def score(photos, groups, genre="auto"):
             face_rel = face_sharp(p) / face_ref
             face_n = 0.7 * (face_sharp(p) / group_face[g]) ** 0.5 + 0.3 * min(1.0, face_rel ** 0.5)
             sharp_n = 0.5 * sharp_n + 0.5 * face_n
-            # Haar eye detection misses many open eyes (dusk, glasses, profiles, smiles), so only
-            # a frame with fewer detected eyes than a comparable near-duplicate is penalised.
+            # A smile narrows open eyes, so a frame is penalised as a blink only against a
+            # comparable near-duplicate where the same eyes are clearly more open.
             siblings = [photos[i] for i in groups[g]]
             witness = _blink_witness(p, siblings)
-            eyes_n = 1.0 - 0.4 * (_fewest_eyes(witness) - _fewest_eyes(p)) if witness else 1.0
             if witness:
                 notes.append("possible closed eyes")
-            elif any((_fewest_eyes(s) or 0) > _fewest_eyes(p) for s in siblings):
-                notes.append("eyes not detected, but found on a brighter or softer near-duplicate: "
-                             "check whether they are open")
+            if _openness(p) is not None:
+                eyes_n = 0.6 if witness else 1.0
+                if not witness and _openness(p) < EYES_SHUT:
+                    notes.append("eyes look closed: check whether it's a blink or a deliberate look")
+            else:  # Haar eye counts
+                eyes_n = 1.0 - 0.4 * (_fewest_eyes(witness) - _fewest_eyes(p)) if witness else 1.0
+                if not witness and any((_fewest_eyes(s) or 0) > (_fewest_eyes(p) or 0) for s in siblings):
+                    notes.append("eyes not detected, but found on a brighter or softer near-duplicate: "
+                                 "check whether they are open")
         noise_n = 1.0 - 0.5 * min(max((m["noise_sigma"] - 3) / 12, 0.0), 1.0)
         if eyes_n is None:
             tech = 0.55 * sharp_n + 0.30 * m["exposure_score"] + 0.15 * noise_n
@@ -85,6 +94,8 @@ def score(photos, groups, genre="auto"):
             notes.append("overexposed")
         if m["noise_sigma"] > 10:
             notes.append("noisy")
+        if (m.get("aesthetics") or {}).get("utility"):
+            notes.append("looks like a screenshot or document")
 
         # Only the unusable is rejected unseen. Other extremes may be intentional (a silhouette,
         # high key, motion blur), so they go to the aesthetic pass with a note.
@@ -123,27 +134,39 @@ def _why_weaker(p, best, siblings):
     return f"near-duplicate of #{best['id']}, slightly weaker"
 
 
+def _openness(p):
+    """How open the least-open eyes in the frame are (Vision), or None without an eye outline."""
+    values = [f["eye_open"] for f in p["metrics"]["faces"] if f.get("eye_open") is not None]
+    return min(values) if values else None
+
+
 def _fewest_eyes(p):
-    return min((f["eyes_found"] for f in p["metrics"]["faces"]), default=None)
+    """Haar's eye count for the face with fewest, or None (also for Vision faces)."""
+    return min((f["eyes_found"] for f in p["metrics"]["faces"] if "eyes_found" in f), default=None)
+
+
+def _opens_more(s, p):
+    """How much more open s's eyes are than p's, if s shows p as a blink; otherwise 0."""
+    mine, theirs = _openness(p), _openness(s)
+    if mine is not None:
+        return theirs - mine if theirs is not None and mine < EYES_CLOSED and mine < BLINK_RATIO * theirs else 0
+    mine, theirs = _fewest_eyes(p), _fewest_eyes(s)
+    return theirs - mine if mine is not None and theirs is not None and theirs > mine else 0
 
 
 def _blink_witness(p, siblings):
     """The sibling that shows p's eyes are closed, or None if none credibly does.
 
-    Haar misses eyes narrowed by a smile and finds them more easily in a brighter or
-    higher-contrast frame, so a sibling with more eyes found is evidence only when it is
-    about as sharp and as well exposed as p. Otherwise p's missing eyes are unknown.
+    Eye detectors read eyes more easily in a sharper, brighter frame, so a sibling is evidence
+    only when it is about as sharp and as well exposed as p. Otherwise p's eyes are unknown.
     """
-    mine = _fewest_eyes(p)
-    if mine is None:
-        return None
     pm = p["metrics"]
     witnesses = [s for s in siblings
-                 if (_fewest_eyes(s) or 0) > mine
+                 if _opens_more(s, p) > 0
                  and s["metrics"]["sharpness"] >= EYES_MIN_SHARP * pm["sharpness"]
                  and s["metrics"]["exposure_score"] >= pm["exposure_score"] - EYES_EXPOSURE_GAP
                  and abs(s["metrics"].get("mean_luma", 0) - pm.get("mean_luma", 0)) <= EYES_LUMA_GAP]
-    return max(witnesses, key=_fewest_eyes, default=None)
+    return max(witnesses, key=lambda s: _opens_more(s, p), default=None)
 
 
 def _spread(items, n):

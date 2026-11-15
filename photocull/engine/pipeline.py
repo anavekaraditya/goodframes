@@ -10,7 +10,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from PIL import Image
 
-from . import brief, grouping, moments, scoring, taste
+from . import brief, gemedit, grouping, moments, scoring, taste
 from .ingest import THUMB_EDGE, ingest, open_photo
 from .review import FACE_CROP_EDGE, MAX_FINALISTS, RUBRIC_VERSION, ReviewError, estimate_cost, usage_cost
 
@@ -69,6 +69,15 @@ class Shoot:
             im = im.convert("RGB")
             im.thumbnail((FACE_CROP_EDGE, FACE_CROP_EDGE))
         return _jpeg(im)
+
+    def read_edited(self, p):
+        """The frame's thumbnail with its edit recipe applied, as JPEG bytes; None with nothing to apply."""
+        adj = gemedit.adjustments(p.get("review"), p["metrics"])
+        if not adj:
+            return None
+        with Image.open(self.store.thumb_path(p["fp"])) as im:
+            out = gemedit.render(im, adj, [f["box"] for f in p["metrics"]["faces"]])
+        return _jpeg(out)
 
     def read_face_crop(self, p):
         """A close-up of the largest face from the original file, or None if there's no face."""
@@ -454,6 +463,7 @@ def summary(p):
         "technical": round(p["technical"] * 10, 1), "score": r.get("score"),
         "reason": r.get("reason"), "edit_potential": r.get("edit_potential"),
         "edit_recipe": r.get("edit_recipe"), "flaws": r.get("fixable_flaws", []),
+        "edit": gemedit.describe(gemedit.adjustments(r, p["metrics"])),  # what the after-edit preview applies
         "rank": p.get("rank"), "shoot_type": r.get("shoot_type"), "best": bool(r.get("best")),
         "subscores": {k: r[k] for k in ("impact", "moment", "light", "composition", "subject_focus") if k in r},
         "notes": p.get("notes", []), "override": p.get("override"),

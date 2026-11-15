@@ -254,6 +254,10 @@
     <button class="icon-btn close" data-close aria-label="Close"><svg class="i" aria-hidden="true"><use href="#i-close"/></svg></button>
     <div class="detail-main" id="detail-main">
       <img id="detail-img" alt="">
+      <div class="ba" id="detail-ba" role="group" aria-label="Before or after the edit" hidden>
+        <button type="button" data-ba="before" aria-pressed="true">Before</button>
+        <button type="button" data-ba="after" aria-pressed="false">After edit <kbd>E</kbd></button>
+      </div>
       <figure class="crop" id="detail-zoom" title="Zoom to 100% (Z)"><img id="detail-crop" alt="100% crop"><figcaption>100% focus check · <kbd>Z</kbd></figcaption></figure>
     </div>
     <aside class="detail-side">
@@ -310,6 +314,7 @@
       <dt><kbd>X</kbd></dt><dd>Reject, or bring back</dd>
       <dt><kbd>C</kbd></dt><dd>Compare the photo's moment side by side</dd>
       <dt><kbd>Z</kbd></dt><dd>Zoom to 100%</dd>
+      <dt><kbd>E</kbd></dt><dd>Show the photo before or after its edit</dd>
       <dt><kbd>U</kbd> or <kbd>⌘Z</kbd></dt><dd>Undo</dd>
       <dt><kbd>Esc</kbd></dt><dd>Close</dd>
     </dl>

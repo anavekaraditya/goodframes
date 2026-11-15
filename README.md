@@ -86,6 +86,10 @@ compare them or ask Claude a follow-up question.
 Some of the best frames need an edit before they shine. Goodframes flags them separately, with
 the scores they'd get after editing and a recipe to get there.
 
+Each gem also shows a **before/after preview**: the recipe applied to the photo (exposure,
+shadows, white balance, straighten, crop), so you can see the rescued frame before you open an
+editor. Press `E` to switch between the two. The preview is made on your Mac and costs nothing.
+
 <img src="docs/screenshots/gem.jpg" alt="A dark silhouette portrait marked as a hidden gem, with the edit recipe: lift exposure and shadows to bring out his face" width="100%">
 
 ### Start a cull the moment the card goes in

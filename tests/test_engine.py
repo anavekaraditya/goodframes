@@ -8,7 +8,7 @@ import numpy as np
 from conftest import FIXTURES, FakeReviewer, _save, _scene, write_dng
 from PIL import Image, ImageEnhance
 
-from photocull.engine import evaluate, export, ingest, pipeline, review, scoring
+from photocull.engine import brief, evaluate, export, ingest, pipeline, review, scoring
 from photocull.engine.store import Store
 
 
@@ -774,3 +774,39 @@ def test_unreadable_raw_is_skipped_not_shown_blank(tmp_path, monkeypatch, shoot_
     shoot = pipeline.analyze(str(folder), Store(str(folder)),
                              on_event=lambda e: e.get("error") and errors.append(e["file"]))
     assert [p["file"] for p in shoot.photos] == ["IMG_600.jpg"] and errors == ["DSC_0002.dng"]
+
+
+def test_a_count_above_the_moments_is_filled_from_extra_frames(shoot_dir):
+    shoot, rev = _full_cull(shoot_dir)
+    picks = sum(p["status"] == "pick" for p in shoot.photos)
+    strong = [p for p in shoot.photos if p.get("review") and p["status"] != "rejected"
+              and p["final"] >= pipeline.FINALIST_FLOOR]
+    assert picks < len(strong)  # one per moment leaves good frames over
+    pipeline.set_target(shoot, picks + 2)
+    est = pipeline.brief_estimate(shoot, MODEL)
+    assert est["moments"] == 0 and est["requests"] == 1  # a re-rank, no new reviews
+    pipeline.confirm_brief(shoot)
+    pipeline.review(shoot, rev)
+    assert rev.calls == 0 and rev.final_edits == 1
+    assert sum(p["status"] == "pick" for p in shoot.photos) == picks + 2
+    assert pipeline.state(shoot)["target"] == picks + 2
+
+
+def test_a_count_the_shoot_cant_fill_stops_at_the_strong_frames(shoot_dir):
+    shoot, rev = _full_cull(shoot_dir)
+    pipeline.set_target(shoot, 99)
+    pipeline.confirm_brief(shoot)
+    pipeline.review(shoot, rev)
+    s = pipeline.state(shoot)
+    assert s["target"] == 99 and s["selection"]["total"] < 99
+    assert s["counts"]["pick"] == s["selection"]["total"]
+
+
+def test_the_count_is_set_without_a_call_and_survives_the_standard_cull(shoot_dir):
+    shoot = _analyze(shoot_dir)
+    version = brief.load(shoot.store)["version"]
+    state = pipeline.set_target(shoot, 500)
+    assert state["draft"]["target_count"] == brief.MAX_TARGET and state["version"] == version + 1
+    assert state["applied"] is None  # still only a draft until confirmed
+    assert pipeline.standard_brief(shoot)["draft"]["target_count"] == brief.MAX_TARGET
+    assert pipeline.set_target(shoot, None)["draft"]["target_count"] is None

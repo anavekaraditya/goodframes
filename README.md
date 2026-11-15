@@ -52,6 +52,11 @@ Before anything is sent for review, you chat with Claude about the shoot: who ma
 keep, the look you like. It writes a short brief and shows the cost, and the cull starts only
 when you confirm. Prefer to skip the chat? **Use the standard cull** is one click.
 
+Need a set number of photos, like 40 for a client gallery? Type it into **Photos you need**. The
+cull keeps your best 40. If the shoot has fewer moments than that, the strongest extra frames fill
+the set, and if there aren't 40 frames worth keeping, it tells you instead of padding with weak ones.
+Changing the number after a cull is free unless new frames need ranking.
+
 <img src="docs/screenshots/brief.jpg" alt="The brief: a short conversation with Claude on the left, and the brief it wrote on the right, with the estimated cost" width="100%">
 
 ### See the shoot sorted into moments

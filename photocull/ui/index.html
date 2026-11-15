@@ -191,6 +191,7 @@
   <div class="results-body">
     <p class="notice" id="refine-status" role="status" hidden></p>
     <p class="notice" id="unmet" hidden></p>
+    <p class="notice" id="shortfall" hidden></p>
     <div class="notice update" id="update-notice" hidden>
       <span id="update-text"></span>
       <button class="btn" id="update-review" type="button"><svg class="i" aria-hidden="true"><use href="#i-refresh"/></svg>Review again</button>
@@ -224,6 +225,14 @@
     </section>
     <aside class="brief-card">
       <h3 class="eyebrow">The brief</h3>
+      <div class="count-ctl">
+        <label for="brief-count">Photos you need</label>
+        <div class="count-row">
+          <input type="number" id="brief-count" min="1" max="100" step="1" inputmode="numeric" placeholder="Any">
+          <button class="btn ghost small" id="brief-count-clear" type="button" hidden>Let Claude decide</button>
+        </div>
+        <p class="hint" id="brief-count-hint"></p>
+      </div>
       <dl id="brief-fields"></dl>
       <div id="brief-style" hidden>
         <h3 class="eyebrow">Save to my style?</h3>

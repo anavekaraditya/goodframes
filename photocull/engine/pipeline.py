@@ -305,7 +305,10 @@ def _finalists(shoot):
     strong = [p for p in shoot.photos if p.get("review") and p["status"] != "rejected"
               and p["final"] >= FINALIST_FLOOR]
     best = [p for p in strong if p["review"].get("best")]
-    extra = [p for p in strong if not p["review"].get("best")] if shoot.brief["per_moment"] == "few" else []
+    # A count above the number of moments is filled from the strongest other frames.
+    target = shoot.brief["brief"].get("target_count") or 0
+    several = shoot.brief["per_moment"] == "few" or len(best) < target
+    extra = [p for p in strong if not p["review"].get("best")] if several else []
     return (sorted(best, key=lambda p: -p["final"]) + sorted(extra, key=lambda p: -p["final"]))[:MAX_FINALISTS]
 
 
@@ -465,6 +468,7 @@ def state(shoot):
         "photos": [summary(p) for p in shoot.photos],
         "moments": shoot.moments,
         "selection": shoot.selection,
+        "target": shoot.brief["brief"].get("target_count"),
         "unmet": shoot.unmet,
         "counts": {k: sum(p["status"] == k for p in shoot.photos)
                    for k in ("pick", "gem", "similar", "below", "candidate", "rejected")},
@@ -527,11 +531,20 @@ def brief_turn(shoot, reviewer, text=None):
 
 
 def standard_brief(shoot):
-    """Replace the draft with the standard brief. No API call."""
+    """Replace the draft with the standard brief, keeping the photo count. No API call."""
     state = brief.load(shoot.store)
-    state["draft"] = dict(brief.STANDARD)
+    state["draft"] = dict(brief.STANDARD, target_count=state["draft"]["target_count"])
     state["rerun"] = "full_review"
     state["suggestions"] = []
+    state["version"] += 1
+    brief.save(shoot.store, state)
+    return state
+
+
+def set_target(shoot, count):
+    """Set how many photos the cull should keep (None: Claude's recommendation). No API call."""
+    state = brief.load(shoot.store)
+    state["draft"] = brief.normalize(dict(state["draft"], target_count=count))
     state["version"] += 1
     brief.save(shoot.store, state)
     return state

@@ -8,3 +8,4 @@ fastapi
 uvicorn
 pywebview
 keyring
+pyobjc-framework-Vision; sys_platform == "darwin"

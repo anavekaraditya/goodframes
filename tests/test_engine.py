@@ -52,9 +52,9 @@ def _smile(face, slit=0.25, half=20, pad=70):
     return Image.fromarray(a)
 
 
-def test_smiling_frames_are_not_rejected_for_eyes_only_found_when_overexposed(tmp_path, monkeypatch):
-    # A smile narrows the eyes so Haar misses them; in a punchier copy with clipped highlights it
-    # finds one. That blown sibling must not get the two well-exposed frames rejected as blinks.
+def test_smiling_frames_are_not_rejected_next_to_an_overexposed_copy(tmp_path, monkeypatch):
+    # A smile narrows the eyes; a punchier copy with clipped highlights reads them as more open.
+    # That blown sibling must not get the two well-exposed frames rejected as blinks.
     monkeypatch.setenv("PHOTOCULL_HOME", str(tmp_path / "home"))
     folder = tmp_path / "shoot"
     folder.mkdir()
@@ -65,13 +65,11 @@ def test_smiling_frames_are_not_rejected_for_eyes_only_found_when_overexposed(tm
         _save(img, str(folder / f"IMG_80{i}.jpg"), t + timedelta(seconds=i * 0.5))
     f = _by_file(_analyze(str(folder)))
     sharp, bright = [f["IMG_800.jpg"], f["IMG_801.jpg"]], f["IMG_802.jpg"]
-    eyes = lambda p: min(x["eyes_found"] for x in p["metrics"]["faces"])
-    assert all(eyes(p) < eyes(bright) for p in sharp)  # the bug's setup: eyes found only when blown
     assert bright["metrics"]["exposure_score"] < sharp[0]["metrics"]["exposure_score"] - 0.1
     assert len({p["group"] for p in f.values()}) == 1
     for p in sharp:
         assert p["status"] == "candidate", p["why"]
-        assert any("check whether they are open" in n for n in p["notes"])
+        assert "possible closed eyes" not in p["notes"]
 
 
 def test_blink_needs_a_comparable_sibling():
@@ -86,6 +84,41 @@ def test_blink_needs_a_comparable_sibling():
     ps = [photo(0, 0), photo(1, 2)]
     scoring.select_in_groups(ps, [[0, 1]])
     assert ps[0]["status"] == "rejected" and "#1 has eyes open" in ps[0]["reject"]
+
+
+def _eyes_photo(i, eye_open, sharp=500.0):
+    p = _photo(i, sharp, technical=0.6 + eye_open)  # as score() would rank them
+    p["metrics"].update(faces=[{"eye_open": eye_open, "sharpness": sharp}], sharp_tile=(0, 0), shake_anisotropy=0,
+                        noise_sigma=1, tilt_deg=None, clip_hi=0, clip_lo=0, exposure_score=1.0, mean_luma=120)
+    return p
+
+
+def test_vision_blink_needs_shut_eyes_and_an_open_sibling():
+    blink = [_eyes_photo(0, 0.05), _eyes_photo(1, 0.31)]
+    scoring.select_in_groups(blink, [[0, 1]])
+    assert blink[0]["status"] == "rejected" and "#1 has eyes open" in blink[0]["reject"]
+    smile = [_eyes_photo(0, 0.13), _eyes_photo(1, 0.31)]  # narrowed by a smile, not shut
+    scoring.select_in_groups(smile, [[0, 1]])
+    assert smile[0]["status"] == "candidate"
+    softer = [_eyes_photo(0, 0.05), _eyes_photo(1, 0.31, sharp=300)]  # no credible witness
+    scoring.select_in_groups(softer, [[0, 1]])
+    assert softer[0]["status"] == "candidate"
+
+
+def test_vision_lone_shut_eyes_get_a_note_not_a_reject():
+    ps = [_eyes_photo(0, 0.05)]
+    scoring.score(ps, [[0]])
+    assert ps[0]["reject"] is None and any("eyes look closed" in n for n in ps[0]["notes"])
+
+
+def test_vision_measures_faces_eyes_and_aesthetics():
+    from photocull.engine import quality
+    face = np.asarray(Image.open(os.path.join(FIXTURES, "astronaut.png")).convert("RGB"))[:, :, ::-1].copy()
+    m = quality.measure(face)
+    assert len(m["faces"]) == 1
+    f = m["faces"][0]
+    assert f["eye_open"] > scoring.EYES_CLOSED and 0 < f["quality"] <= 1 and f["sharpness"] > 0
+    assert m["aesthetics"] is None or -1 <= m["aesthetics"]["score"] <= 1
 
 
 def test_softer_frame_with_the_better_moment_reaches_review():

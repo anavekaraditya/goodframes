@@ -1160,7 +1160,7 @@
     const sub = p.subscores || {};
     const rows = [["Claude", p.score], ["After edit", p.edit_potential], ["Impact", sub.impact], ["Moment", sub.moment],
       ["Light", sub.light], ["Composition", sub.composition], ["Subject focus", sub.subject_focus],
-      ["Technical", p.technical], ["Final", p.final]]
+      ["Technical", p.technical], ["Apple aesthetics", p.aesthetic], ["Final", p.final]]
       .filter(([, v]) => v != null)
       .map(([k, v]) => `<dt>${k}</dt><dd>${(+v).toFixed(1)}</dd>`).join("");
     const rank = p.rank ? `<dt>Final edit</dt><dd>#${p.rank}</dd>` : "";

@@ -520,6 +520,17 @@ textarea {
 .scores dd { margin: 0; text-align: right; font-variant-numeric: tabular-nums; }
 .recipe { border: 1px solid var(--gem-line); background: var(--gem-soft); border-radius: 8px; padding: 9px 11px; font-size: 12.5px; }
 .recipe b { color: var(--gem-ink); display: block; font-size: 11px; font-weight: 600; margin-bottom: 2px; }
+.recipe b.applied:not(:first-child) { margin-top: 8px; }
+.recipe .fine { display: block; margin-top: 4px; color: var(--muted); font-size: 11.5px; }
+.ba { position: absolute; top: 12px; left: 50%; transform: translateX(-50%); z-index: 2; display: flex; gap: 2px; padding: 2px;
+  border-radius: 8px; background: rgba(23, 21, 18, .82); backdrop-filter: blur(6px); }
+.ba button { border: 0; background: transparent; color: #ddd5c8; height: 26px; padding: 0 11px; border-radius: 6px;
+  font-size: 12px; font-weight: 500; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; }
+.ba button[aria-pressed=true] { background: var(--gem); color: var(--on-gem); font-weight: 600; }
+.ba kbd { min-width: 0; padding: 0 4px; line-height: 14px; background: transparent; color: inherit; border-color: currentColor; opacity: .7; }
+.detail-main.zoomed .ba { display: none; }
+.tile .after-tag { position: absolute; top: 7px; left: 7px; z-index: 1; font-size: 10.5px; font-weight: 600; padding: 2px 6px;
+  border-radius: 4px; background: var(--gem); color: var(--on-gem); }
 .notes { color: var(--faint); font-size: 12px; margin: 0; }
 .detail-actions { display: flex; gap: 6px; flex-wrap: wrap; }
 .crop { cursor: zoom-in; }

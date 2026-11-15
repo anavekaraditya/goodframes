@@ -996,10 +996,14 @@
   const LABEL = { pick: "Pick", gem: "Gem", rejected: "Reject", similar: "Similar", below: "Below cut", candidate: "Unreviewed" };
   const ICON = { check: icon("pick"), gem: icon("gem"), reject: icon("reject") };
 
+  // Changes when the recipe does, so an edited preview is never a stale one.
+  const rev = (p) => encodeURIComponent(p.edit.join("|"));
+
   // The photo and Claude's reason; the file name and scores are in the detail view.
   function tile(p) {
     const line = p.status === "gem" ? `<div class="recipe-line">${esc(p.edit_recipe || p.why)}</div>` : "";
     const reason = p.status === "rejected" ? p.why : (p.reason || p.why || "");
+    const after = app.tab === "gem" && p.edit.length;  // gems are shown as they'd look edited
     const rank = app.tab === "pick" && p.rank ? `<span class="rank" title="Place in the final edit">${p.rank}</span>` : "";
     return `<div class="tile ${p.status}" data-id="${p.id}" tabindex="0" title="${esc(p.file)}">
       <span class="badge ${p.status}">${LABEL[p.status] || p.status}</span>${rank}
@@ -1008,7 +1012,8 @@
         <button class="chip-btn gem ${p.status === "gem" ? "on" : ""}" data-act="gem" aria-label="Hidden gem (G)" title="Hidden gem (G)">${ICON.gem}</button>
         <button class="chip-btn reject ${p.override === "reject" ? "on" : ""}" data-act="reject" aria-label="Reject (X)" title="Reject (X)">${ICON.reject}</button>
       </div>
-      <img loading="lazy" src="/api/thumb/${p.fp}" alt="${esc(p.file)}">
+      ${after ? `<span class="after-tag">After edit</span>` : ""}
+      <img loading="lazy" src="${after ? `/api/edited/${p.id}?r=${rev(p)}` : `/api/thumb/${p.fp}`}" alt="${esc(p.file)}">
       <div class="meta"><p class="reason">${esc(reason)}</p>${line}</div></div>`;
   }
 
@@ -1145,11 +1150,15 @@
   });
 
   /* ---------- detail ---------- */
-  let detailId = null, zoomed = false;
+  let detailId = null, zoomed = false, showAfter = false;
   function openDetail(id) {
+    if (id !== detailId) showAfter = app.tab === "gem";  // a gem opens on its edit; the rest as shot
     detailId = id;
     const p = app.shoot.photos[id - 1];
-    $("#detail-img").src = `/api/thumb/${p.fp}`;
+    const canEdit = p.edit.length > 0;
+    $("#detail-img").src = canEdit && showAfter ? `/api/edited/${p.id}?r=${rev(p)}` : `/api/thumb/${p.fp}`;
+    $("#detail-ba").hidden = !canEdit;
+    $$("#detail-ba button").forEach((b) => b.setAttribute("aria-pressed", String((b.dataset.ba === "after") === (canEdit && showAfter))));
     $("#detail-crop").src = `/api/crop/${p.id}`;
     $("#detail-main").classList.toggle("zoomed", zoomed);
     const badge = $("#detail-badge");
@@ -1166,8 +1175,10 @@
     const rank = p.rank ? `<dt>Final edit</dt><dd>#${p.rank}</dd>` : "";
     $("#detail-scores").innerHTML = rank + rows + `<dt>Taken</dt><dd>${time(p.taken)}</dd>`;
     const recipe = $("#detail-recipe");
-    recipe.hidden = !p.edit_recipe;
-    recipe.innerHTML = p.edit_recipe ? `<b>Edit recipe</b>${esc(p.edit_recipe)}` : "";
+    recipe.hidden = !p.edit_recipe && !canEdit;
+    recipe.innerHTML = (p.edit_recipe ? `<b>Edit recipe</b>${esc(p.edit_recipe)}` : "")
+      + (canEdit ? `<b class="applied">The preview applies</b>${esc(p.edit.join(" · "))}
+        <span class="fine">A quick preview of where the edit leads, not a finished edit.</span>` : "");
     const cut = p.status === "below" && p.why ? `Why it was left out: ${p.why}. ` : "";
     $("#detail-notes").textContent = cut + (p.notes.length ? "Technical: " + p.notes.join(" · ") : "");
     $("#detail-actions").innerHTML = `
@@ -1220,6 +1231,16 @@
     $("#brief-input").value = q ? `Why did you pick ${q.file} over ${p.file}? ` : `Why wasn't ${p.file} picked? `;
     $("#brief-input").focus();
   }
+
+  function setAfter(on) {
+    if (!app.shoot.photos[detailId - 1].edit.length) return;
+    showAfter = on;
+    openDetail(detailId);
+  }
+  $("#detail-ba").addEventListener("click", (e) => {
+    const b = e.target.closest("[data-ba]");
+    if (b) setAfter(b.dataset.ba === "after");
+  });
 
   function toggleZoom() {
     zoomed = !zoomed;
@@ -1309,6 +1330,7 @@
     else if (KEY_ACTS[k] && id) toggle(id, KEY_ACTS[k]);
     else if (k === "c" && id) openCompare(app.shoot.photos[id - 1].moment);
     else if (k === "z" && inDetail) toggleZoom();
+    else if (k === "e" && inDetail) setAfter(!showAfter);
     else return;
     e.preventDefault();
   });

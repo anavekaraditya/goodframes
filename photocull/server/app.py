@@ -451,6 +451,19 @@ def thumb(fp: str):
     return FileResponse(path, media_type="image/jpeg", headers={"Cache-Control": "max-age=86400"})
 
 
+@app.get("/api/edited/{pid}")
+def edited(pid: int):
+    """A preview of the frame after its edit recipe. Rendered on request: recipes change with reviews."""
+    shoot = _need_shoot()
+    try:
+        data = shoot.read_edited(shoot.by_id(pid))
+    except (StopIteration, IndexError, OSError):
+        raise HTTPException(404)
+    if data is None:
+        raise HTTPException(404, "Nothing to edit on this frame.")
+    return Response(data, media_type="image/jpeg", headers={"Cache-Control": "no-cache"})
+
+
 @app.get("/api/crop/{pid}")
 def crop(pid: int):
     """A 100% crop around the face (or the sharpest area) of the original file."""

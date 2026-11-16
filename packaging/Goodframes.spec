@@ -8,6 +8,7 @@ CASCADES = os.path.join(cv2.data.haarcascades)
 datas = [
     (os.path.join(ROOT, "photocull", "ui"), "photocull/ui"),
     (os.path.join(ROOT, "photocull", "engine", "rubric.md"), "photocull/engine"),
+    (os.path.join(ROOT, "photocull", "models", "face_recognition_sface_2021dec.onnx"), "photocull/models"),
 ]
 for name in ("haarcascade_frontalface_default.xml", "haarcascade_eye_tree_eyeglasses.xml"):
     datas.append((os.path.join(CASCADES, name), "cv2/data"))

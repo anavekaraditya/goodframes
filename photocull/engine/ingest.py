@@ -21,7 +21,7 @@ except ImportError:
 RENDERED_EXTS = {".jpg", ".jpeg", ".heic", ".heif"}
 EXTS = RENDERED_EXTS | RAW_EXTS
 THUMB_EDGE = 1024
-METRICS_VERSION = 3  # 3: faces and eye openness from Apple Vision
+METRICS_VERSION = 4  # 3: faces and eye openness from Apple Vision; 4: face signatures for grouping people
 
 
 def _num(v):

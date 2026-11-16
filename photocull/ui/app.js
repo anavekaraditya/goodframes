@@ -992,6 +992,35 @@
     if (b) openDetail(+b.dataset.shotPhoto);
   });
 
+  // Who is in the picks: one face per person, with how many picks they're in.
+  const MAX_PEOPLE = 16;
+  function renderCast() {
+    const cast = app.shoot.people || [];
+    const box = $("#cast");
+    box.hidden = cast.length < 2 || !reviewed(app.shoot) || app.refining;
+    if (box.hidden) return;
+    const out = cast.filter((c) => !c.picks.length).length;
+    const person = (c) => {
+      const n = c.picks.length;
+      const frames = `${c.photos} photos`;
+      const tip = n ? `In ${n} of your picks (${frames}). Click to open one.`
+        : c.usable ? `In none of your picks (${frames}). Click to open their best frame.`
+        : `In none of your picks: all ${frames} were rejected. Click to open one.`;
+      return `<li><button type="button" class="person ${n ? "" : "none"}" data-person-photo="${c.open}" title="${tip}" aria-label="Person ${c.id}. ${tip}">
+        <img src="/api/face/${c.cover[0]}/${c.cover[1]}" alt="" loading="lazy"><span class="n">${n}</span></button></li>`;
+    };
+    const head = out ? `People: ${out} of ${cast.length} ${out === 1 ? "is" : "are"} in none of your picks`
+      : `People: all ${cast.length} are in your picks`;
+    const more = cast.length > MAX_PEOPLE ? `<span class="more">and ${cast.length - MAX_PEOPLE} more</span>` : "";
+    // Anyone left out comes first, so they're never among the ones cut off.
+    const shown = [...cast].sort((a, b) => !!a.picks.length - !!b.picks.length || a.id - b.id).slice(0, MAX_PEOPLE);
+    box.innerHTML = `<b>${head}</b><ul class="people">${shown.map(person).join("")}</ul>${more}`;
+  }
+  $("#cast").addEventListener("click", (e) => {
+    const b = e.target.closest("[data-person-photo]");
+    if (b) openDetail(+b.dataset.personPhoto);
+  });
+
   function renderResults() {
     const c = counts();
     $$("#tabs button").forEach((b) => {
@@ -1014,6 +1043,7 @@
     $("#shortfall").textContent = `You asked for ${target} photos, but only ${have} ${have === 1 ? "frame was" : "frames were"} `
       + "strong enough to keep. You can add more yourself from the Moments tab.";
     renderCoverage(est);
+    renderCast();
     const unmet = app.shoot.unmet || [];
     $("#unmet").hidden = !unmet.length;
     $("#unmet").textContent = unmet.length ? `No frame found for: ${unmet.join(", ")}` : "";

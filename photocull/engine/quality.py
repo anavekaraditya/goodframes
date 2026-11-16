@@ -9,6 +9,8 @@ import math
 import cv2
 import numpy as np
 
+from . import people
+
 _CASCADES = {}
 
 
@@ -92,11 +94,34 @@ def _openness(region, fw, fh):
     return round((max(ys) - min(ys)) / width, 3) if width > 0 else None
 
 
+def _five_points(lm, b, w, h):
+    """The eyes, nose and mouth corners in thumbnail pixels, each pair left to right; None if any is missing."""
+    if not lm or not (lm.leftEye() and lm.rightEye() and lm.nose() and lm.outerLips()):
+        return None
+
+    def pixels(region):
+        pts = region.normalizedPoints()
+        return [((b.origin.x + pts[i].x * b.size.width) * w, (1 - b.origin.y - pts[i].y * b.size.height) * h)
+                for i in range(region.pointCount())]
+
+    def centre(region):
+        pts = pixels(region)
+        return (sum(p[0] for p in pts) / len(pts), sum(p[1] for p in pts) / len(pts)) if pts else None
+
+    eyes = [centre(lm.leftEye()), centre(lm.rightEye())]
+    nose, lips = centre(lm.nose()), pixels(lm.outerLips())
+    if None in eyes or nose is None or len(lips) < 2:
+        return None
+    eyes.sort()
+    return [*eyes, nose, min(lips), max(lips)]
+
+
 def vision(bgr, gray):
     """(faces, aesthetics) from Apple Vision, or None where Vision isn't available.
 
     faces: box (thumbnail pixels, top-left origin), eye_open (the less open eye, None when no
-    eye outline was found), quality (Vision's face capture quality, 0-1) and sharpness.
+    eye outline was found), quality (Vision's face capture quality, 0-1), sharpness and
+    embedding (the face's signature for telling people apart, see people.py; None without one).
     aesthetics: Apple's overall image score (-1 to 1) and whether the frame looks like a
     screenshot or document; None before macOS 15.
     """
@@ -137,6 +162,7 @@ def vision(bgr, gray):
         q = qualities[i] if i < len(qualities) else None
         faces.append({"box": [x, y, int(fw), int(fh)], "eye_open": min(eyes) if eyes else None,
                       "quality": round(float(q), 3) if q is not None else None,
+                      "embedding": people.embed(bgr, [x, y, fw, fh], _five_points(lm, b, w, h)),
                       "sharpness": _lap_var(crop) if (crop := gray[y:y + int(fh), x:x + int(fw)]).size else 0.0})
     aesthetics = None
     if scores is not None and scores.results():

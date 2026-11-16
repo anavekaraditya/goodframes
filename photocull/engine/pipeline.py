@@ -10,7 +10,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from PIL import Image
 
-from . import brief, gemedit, grouping, moments, scoring, taste
+from . import brief, gemedit, grouping, moments, people, scoring, taste
 from .ingest import THUMB_EDGE, ingest, open_photo
 from .review import FACE_CROP_EDGE, MAX_FINALISTS, RUBRIC_VERSION, ReviewError, estimate_cost, usage_cost
 
@@ -33,6 +33,7 @@ DEFAULT_SETTINGS = {
 FINALIST_FLOOR = 6.0         # final score a best frame needs to enter the whole-shoot final edit
 FACE_PADDING = 0.35          # share of the face's size added on each side of a focus close-up
 BRIEF_SAMPLE = 12            # frames Claude sees during the brief chat
+AVATAR_EDGE = 144            # a person's face in the People strip
 
 
 def _noop(event):
@@ -50,6 +51,8 @@ class Shoot:
         self.brief = brief.applied(None)  # the confirmed brief, as it applies to reviews
         self.selection = None
         self.unmet = []
+        self.people = []      # faces grouped by person (people.group)
+        self.cast = []        # per person: how many photos, which are picks, and the frame to open
         self.coverage = []    # per shot on the shot list: the picks that show it, and other frames that do
 
     def by_id(self, pid):
@@ -79,6 +82,16 @@ class Shoot:
         with Image.open(self.store.thumb_path(p["fp"])) as im:
             out = gemedit.render(im, adj, [f["box"] for f in p["metrics"]["faces"]])
         return _jpeg(out)
+
+    def read_face(self, p, k):
+        """A small square portrait of the k-th face in the frame, from its thumbnail."""
+        x, y, w, h = p["metrics"]["faces"][k]["box"]
+        with Image.open(self.store.thumb_path(p["fp"])) as im:
+            half = max(w, h) * (0.5 + FACE_PADDING / 2)
+            cx = min(max(x + w / 2, half), im.width - half)
+            cy = min(max(y + h / 2, half), im.height - half)
+            out = im.convert("RGB").crop((int(cx - half), int(cy - half), int(cx + half), int(cy + half)))
+        return _jpeg(out.resize((AVATAR_EDGE, AVATAR_EDGE), Image.LANCZOS))
 
     def read_face_crop(self, p):
         """A close-up of the largest face from the original file, or None if there's no face."""
@@ -120,7 +133,12 @@ def analyze(folder, store, genre="auto", on_event=_noop):
     for i, p in enumerate(photos, 1):
         p["id"] = i
         p["status"] = None
+        p["people"] = []
     shoot.photos = photos
+    shoot.people = people.group(photos)
+    for person in shoot.people:
+        for pid in person["photos"]:
+            photos[pid - 1]["people"].append(person["id"])
     if not photos:
         on_event({"type": "analyzed", "photos": 0})
         return shoot
@@ -486,6 +504,17 @@ def decide(shoot, settings=None):
         elif o in ("unpick", "ungem") and p["status"] in ("pick", "gem"):
             p["status"], p["why"] = "below", "Removed by you"
 
+    # Who made the picks. A person with none opens on their strongest frame that could still be one.
+    shoot.cast = []
+    for person in shoot.people:
+        frames = [shoot.by_id(pid) for pid in person["photos"]]
+        picks = sorted((p for p in frames if p["status"] == "pick"), key=lambda p: p["rank"] or 10 ** 6)
+        usable = [p for p in frames if p["status"] != "rejected"]
+        best = max(usable or frames, key=lambda p: (p["final"] if p["final"] is not None else -1, p["technical"]))
+        shoot.cast.append({"id": person["id"], "photos": len(frames), "picks": [p["id"] for p in picks],
+                           "usable": len(usable), "open": (picks[0] if picks else best)["id"],
+                           "cover": person["cover"]})
+
     # What became of each shot: the picks that show it, and the other frames that do.
     shoot.coverage = [{"shot": shot,
                        "picks": [p["id"] for p in shoot.photos if shot in p["shots"] and p["status"] == "pick"],
@@ -518,7 +547,7 @@ def summary(p):
         "reason": r.get("reason"), "edit_potential": r.get("edit_potential"),
         "edit_recipe": r.get("edit_recipe"), "flaws": r.get("fixable_flaws", []),
         "edit": gemedit.describe(gemedit.adjustments(r, p["metrics"])),  # what the after-edit preview applies
-        "shots": p.get("shots", []),
+        "shots": p.get("shots", []), "people": p.get("people", []),
         "rank": p.get("rank"), "shoot_type": r.get("shoot_type"), "best": bool(r.get("best")),
         "subscores": {k: r[k] for k in ("impact", "moment", "light", "composition", "subject_focus") if k in r},
         "notes": p.get("notes", []), "override": p.get("override"),
@@ -536,6 +565,7 @@ def state(shoot):
         "target": shoot.brief["brief"].get("target_count"),
         "unmet": shoot.unmet,
         "coverage": shoot.coverage,
+        "people": shoot.cast,
         "counts": {k: sum(p["status"] == k for p in shoot.photos)
                    for k in ("pick", "gem", "similar", "below", "candidate", "rejected")},
     }

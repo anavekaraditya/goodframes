@@ -63,6 +63,11 @@ best frame of every shot, even when it's weaker than the frames around it. The r
 shots are covered and which have no frame at all. Adding a shot after a cull reviews the shoot
 again (the cost is shown first); removing one is free.
 
+After the cull, a **People** strip shows a face for everyone who appears in three or more photos,
+with the number of picks they're in. Anyone in none of your picks is marked, and a click opens
+their best frame so you can add it. Goodframes only groups similar faces within one shoot. It
+doesn't name anyone, and the grouping runs on your Mac.
+
 <img src="docs/screenshots/brief.jpg" alt="The brief: a short conversation with Claude on the left, and the brief it wrote on the right, with the estimated cost" width="100%">
 
 ### See the shoot sorted into moments
@@ -201,6 +206,9 @@ only what the change affects.
 - **Your originals stay on your Mac** and are never modified. Goodframes sends Anthropic only
   previews: about 12 small ones when you chat about the brief, then 1024 px previews and one
   face close-up per frame it reviews, after you confirm.
+- **Faces are grouped on your Mac.** The People strip uses a face model bundled with the app
+  ([SFace](photocull/models/README.md), from OpenCV). Face signatures are stored only in the
+  shoot's `.photo-cull` folder and are never sent anywhere.
 - **The technical pass, grouping and browsing are free.** Only the Claude review costs money,
   billed to your own API key.
 - **You see the price first.** Every cull shows an estimate (for example, *"about $0.09"* for the

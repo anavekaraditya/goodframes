@@ -326,6 +326,17 @@ def brief_target(body: TargetIn):
     return _brief_view(shoot)
 
 
+class ShotsIn(BaseModel):
+    shots: list[str] = []
+
+
+@app.post("/api/brief/shots")
+def brief_shots(body: ShotsIn):
+    shoot = _need_shoot()
+    pipeline.set_shots(shoot, body.shots)
+    return _brief_view(shoot)
+
+
 @app.post("/api/brief/standard")
 def brief_standard():
     shoot = _need_shoot()

@@ -8,6 +8,8 @@ class DemoReviewer:
 
     def review(self, photos, read_thumb, taste_notes="", final_round=False, read_crop=None, brief_notes=""):
         time.sleep(random.uniform(0.3, 1.0))
+        # Demo tagging: every listed shot but the last is "found" in a few frames, so both states show.
+        listed = sum(line.split(". ")[0].isdigit() for line in brief_notes.splitlines())
         results = {}
         for p in photos:
             score = round(min(9.5, 4 + p["technical"] * 5 + random.uniform(-1, 1)), 1)
@@ -18,6 +20,7 @@ class DemoReviewer:
                 "composition": score, "subject_focus": score, "edit_potential": score + (1.5 if dark else 0.3),
                 "fixable_flaws": ["underexposed"] if dark else [],
                 "edit_recipe": "Lift exposure +1, open shadows" if dark else "",
+                "shots": [n for n in range(1, listed) if p["id"] % 6 == n],
             }
         best = max(results.values(), key=lambda r: r["score"])
         return results, ([best["id"]] if best["score"] >= 6 else []), \
@@ -36,7 +39,9 @@ class DemoReviewer:
         count = next((int(w) for w in words.split() if w.isdigit()), 0)
         reply = ("Demo chat: I can see the sample. What's this shoot, and what matters most to you?" if not said
                  else "Noted in the brief. Anything else, or is it ready to confirm?")
+        shots = [s.strip().capitalize() for m in said if m.lower().startswith("shots:") for s in m[6:].split(",")]
         return {"reply": reply, "shoot": said[0] if said else "", "priorities": said[1:], "avoid": [], "look": "",
+                **({"shots": shots} if shots else {}),
                 "target_count": count, "per_moment": "few" if "several" in words else "one",
                 "technical_tolerance": "loose" if "loose" in words else "standard",
                 "rerun": "final_edit" if "more" in words else "full_review",

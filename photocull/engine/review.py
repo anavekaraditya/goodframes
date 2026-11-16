@@ -46,6 +46,8 @@ For each frame give:
 - fixable_flaws: which of the listed flaws editing would fix (empty if none).
 - edit_recipe: if edit_potential is at least 2 above score, a short concrete recipe such as
   "Lift shadows +1, warm WB +300K, straighten 2 degrees, crop to 4:5"; otherwise an empty string.
+- shots: when the request carries a numbered shot list, the numbers of the listed shots this frame
+  clearly shows; otherwise empty.
 
 Then give best_ids: the frames the photographer should keep, exactly one per distinct subject
 or moment. The grouping is generous, so a set can hold a few different subjects shot back to
@@ -76,9 +78,10 @@ OUTPUT_SCHEMA = {
                     "edit_potential": {"type": "number"},
                     "fixable_flaws": {"type": "array", "items": {"type": "string", "enum": FIXABLE_FLAWS}},
                     "edit_recipe": {"type": "string"},
+                    "shots": {"type": "array", "items": {"type": "integer"}},
                 },
                 "required": ["id", "shoot_type", "impact", "moment", "light", "composition", "subject_focus",
-                             "score", "reason", "reject", "edit_potential", "fixable_flaws", "edit_recipe"],
+                             "score", "reason", "reject", "edit_potential", "fixable_flaws", "edit_recipe", "shots"],
                 "additionalProperties": False,
             },
         },
@@ -185,6 +188,10 @@ How to talk:
 Every turn, return the complete brief as it stands now:
 - shoot: what this shoot is, in a few words.
 - priorities: people, moments or things to keep above all.
+- shots: their shot list, if they have one: specific photos they must come away with, each a short
+  phrase such as "Cake cutting" or "Whole family together". The cull keeps the best frame of every
+  shot and tells them which are missing. Keep the shots already in the current brief unless they
+  ask to remove one. A general preference ("more candids") is a priority, not a shot.
 - avoid: what they don't want.
 - look: the style they want, including flaws that are fine for them (grain, motion blur, dark frames).
 - target_count: how many final photos they asked for, or 0 if they didn't say.
@@ -193,7 +200,7 @@ Every turn, return the complete brief as it stands now:
   blur, blinks or exposure; otherwise "standard". Loose costs more, so mention that.
 - rerun: "final_edit" if the frames' existing reviews are enough and they only need ranking again
   (keep more or fewer of something, or change the balance). "full_review" if frames must be judged
-  again against new criteria (a different look, or what counts as a flaw).
+  again against new criteria (a different look, what counts as a flaw, or a new shot on the shot list).
 - style_suggestions: preferences they stated that would apply to all their shoots, such as "Likes
   grain and motion blur". Never include names or details of this shoot. Leave empty if unsure."""
 
@@ -203,6 +210,7 @@ BRIEF_CHAT_SCHEMA = {
         "reply": {"type": "string"},
         "shoot": {"type": "string"},
         "priorities": {"type": "array", "items": {"type": "string"}},
+        "shots": {"type": "array", "items": {"type": "string"}},
         "avoid": {"type": "array", "items": {"type": "string"}},
         "look": {"type": "string"},
         "target_count": {"type": "integer"},
@@ -211,7 +219,7 @@ BRIEF_CHAT_SCHEMA = {
         "rerun": {"type": "string", "enum": ["final_edit", "full_review"]},
         "style_suggestions": {"type": "array", "items": {"type": "string"}},
     },
-    "required": ["reply", "shoot", "priorities", "avoid", "look", "target_count", "per_moment",
+    "required": ["reply", "shoot", "priorities", "shots", "avoid", "look", "target_count", "per_moment",
                  "technical_tolerance", "rerun", "style_suggestions"],
     "additionalProperties": False,
 }
@@ -305,7 +313,10 @@ class ClaudeReviewer:
         """
         content = []
         for p in photos:
-            content.append({"type": "text", "text": f"Photo id={p['id']}, moment {p.get('moment')}, score {p['final']}"})
+            label = f"Photo id={p['id']}, moment {p.get('moment')}, score {p['final']}"
+            if p.get("shots"):
+                label += ", shows from the shot list: " + "; ".join(p["shots"])
+            content.append({"type": "text", "text": label})
             content.append(_image(read_preview(p)))
         ask = f"Make the final edit of these {len(photos)} frames."
         if taste_notes:

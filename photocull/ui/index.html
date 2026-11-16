@@ -190,6 +190,7 @@
   </header>
   <div class="results-body">
     <p class="notice" id="refine-status" role="status" hidden></p>
+    <div class="notice coverage" id="coverage" hidden></div>
     <p class="notice" id="unmet" hidden></p>
     <p class="notice" id="shortfall" hidden></p>
     <div class="notice update" id="update-notice" hidden>
@@ -232,6 +233,15 @@
           <button class="btn ghost small" id="brief-count-clear" type="button" hidden>Let Claude decide</button>
         </div>
         <p class="hint" id="brief-count-hint"></p>
+      </div>
+      <div class="shots-ctl">
+        <label for="brief-shot">Shot list</label>
+        <ul class="shot-list" id="brief-shots"></ul>
+        <form class="count-row" id="brief-shot-form">
+          <input type="text" id="brief-shot" maxlength="80" placeholder="e.g. Cake cutting" aria-label="Add a shot" autocomplete="off">
+          <button class="btn small" id="brief-shot-add" type="submit">Add</button>
+        </form>
+        <p class="hint" id="brief-shots-hint"></p>
       </div>
       <dl id="brief-fields"></dl>
       <div id="brief-style" hidden>

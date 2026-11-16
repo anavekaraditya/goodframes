@@ -64,9 +64,13 @@ shots are covered and which have no frame at all. Adding a shot after a cull rev
 again (the cost is shown first); removing one is free.
 
 After the cull, a **People** strip shows a face for everyone who appears in three or more photos,
-with the number of picks they're in. Anyone in none of your picks is marked, and a click opens
-their best frame so you can add it. Goodframes only groups similar faces within one shoot. It
-doesn't name anyone, and the grouping runs on your Mac.
+with the number of picks they're in. Anyone in none of your picks is marked. Click a face, or
+open the **People** tab, to see everyone in the shoot and each person's photos, split into picks,
+other frames and rejects, so you can pick one of theirs right there. You can give people names,
+merge two groups that are really one person, take out a photo that isn't them, and hide anyone
+who isn't part of the shoot. Each fix can be undone, and it's kept with the shoot. Clicking a
+face in a photo's detail view opens that person. Goodframes only groups similar faces within one
+shoot. Names are yours to add, and they stay on your Mac like the grouping does.
 
 <img src="docs/screenshots/brief.jpg" alt="The brief: a short conversation with Claude on the left, and the brief it wrote on the right, with the estimated cost" width="100%">
 
@@ -100,6 +104,14 @@ the scores they'd get after editing and a recipe to get there.
 Each gem also shows a **before/after preview**: the recipe applied to the photo (exposure,
 shadows, white balance, straighten, crop), so you can see the rescued frame before you open an
 editor. Press `E` to switch between the two. The preview is made on your Mac and costs nothing.
+
+### Look closer, then send it
+
+Open any photo to see why it was picked or passed over. The panel leads with what matters: its
+score, its place in the final edit and when it was taken, plus what it's strongest at. Every
+score is still there under **All scores**. **Save a copy** puts the original file wherever you
+choose, and **Share** opens the Mac's share menu (AirDrop, Messages, Mail and the rest). A RAW
+file is shared as a full-size JPEG, so it opens on any phone.
 
 <img src="docs/screenshots/gem.jpg" alt="A dark silhouette portrait marked as a hidden gem, with the edit recipe: lift exposure and shadows to bring out his face" width="100%">
 
@@ -206,9 +218,9 @@ only what the change affects.
 - **Your originals stay on your Mac** and are never modified. Goodframes sends Anthropic only
   previews: about 12 small ones when you chat about the brief, then 1024 px previews and one
   face close-up per frame it reviews, after you confirm.
-- **Faces are grouped on your Mac.** The People strip uses a face model bundled with the app
-  ([SFace](photocull/models/README.md), from OpenCV). Face signatures are stored only in the
-  shoot's `.photo-cull` folder and are never sent anywhere.
+- **Faces are grouped on your Mac.** The People strip and tab use a face model bundled with the app
+  ([SFace](photocull/models/README.md), from OpenCV). Face signatures and the names
+  you give people are stored only in the shoot's `.photo-cull` folder and are never sent anywhere.
 - **The technical pass, grouping and browsing are free.** Only the Claude review costs money,
   billed to your own API key.
 - **You see the price first.** Every cull shows an estimate (for example, *"about $0.09"* for the

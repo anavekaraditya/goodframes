@@ -1,6 +1,7 @@
 from io import BytesIO
 
 import numpy as np
+import pytest
 from conftest import FakeReviewer
 from PIL import Image
 
@@ -64,6 +65,12 @@ def test_the_bundled_model_signs_a_face_crop():
     assert people.embed(bgr, [80, 80, 140, 160], None) is None
 
 
+def _found(pid, photos):
+    """A person as the grouping would find them: face 0 in each of these photos."""
+    ids = sorted(p["id"] for p in photos)
+    return {"id": pid, "photos": ids, "faces": {i: 0 for i in ids}, "cover": [ids[0], 0]}
+
+
 def test_the_cull_reports_who_is_in_the_picks(shoot_dir):
     shoot = pipeline.analyze(shoot_dir, Store(shoot_dir))
     pipeline.review(shoot, FakeReviewer({"IMG_501": {"score": 9.0}, "IMG_600": {"score": 8.0}}))
@@ -73,11 +80,8 @@ def test_the_cull_reports_who_is_in_the_picks(shoot_dir):
     assert tight["status"] == "pick" and wide["status"] == "similar" and blur["status"] == over["status"] == "rejected"
     for p in shoot.photos:
         p["metrics"]["faces"] = [{"box": [100, 100, 80, 80]}]
-    shoot.people = [
-        {"id": 1, "photos": sorted([tight["id"], wide["id"], lone["id"]]), "faces": {}, "cover": [tight["id"], 0]},
-        {"id": 2, "photos": sorted([wide["id"], blur["id"]]), "faces": {}, "cover": [wide["id"], 0]},
-        {"id": 3, "photos": sorted([blur["id"], over["id"]]), "faces": {}, "cover": [blur["id"], 0]},
-    ]
+    shoot.faces = [_found(1, [tight, wide, lone]), _found(2, [wide, blur]), _found(3, [blur, over])]
+    pipeline._place_people(shoot)
     pipeline.decide(shoot)
     one, two, three = pipeline.state(shoot)["people"]
     assert one["picks"] == [tight["id"], lone["id"]] and one["open"] == tight["id"] and one["photos"] == 3
@@ -95,3 +99,67 @@ def test_a_shoot_without_faces_has_no_people(shoot_dir):
     shoot = pipeline.analyze(shoot_dir, Store(shoot_dir))
     state = pipeline.state(shoot)
     assert state["people"] == [] and all(p["people"] == [] for p in state["photos"])
+
+
+def _people_shoot(shoot_dir):
+    shoot = pipeline.analyze(shoot_dir, Store(shoot_dir))
+    pipeline.review(shoot, FakeReviewer({}))
+    ps = shoot.photos
+    for p in ps:
+        p["metrics"]["faces"] = [{"box": [100, 100, 80, 80]}, {"box": [300, 100, 80, 80]}]
+    shoot.faces = [_found(1, ps[0:4]), _found(2, ps[4:7]), _found(3, ps[7:10])]
+    pipeline._place_people(shoot)
+    pipeline.decide(shoot)
+    return shoot
+
+
+def _again(shoot):
+    """The shoot reopened: the grouping runs afresh and the corrections are read back."""
+    pipeline._place_people(shoot)
+    pipeline.decide(shoot)
+    return {c["id"]: c for c in pipeline.state(shoot)["people"]}
+
+
+def test_names_hiding_and_merges_are_kept_and_undone(shoot_dir):
+    shoot = _people_shoot(shoot_dir)
+    ps = shoot.photos
+    assert pipeline.edit_person(shoot, 1, "name", name="  Priya   Rao ") == 1
+    assert pipeline.edit_person(shoot, 3, "hide") == 3
+    people = _again(shoot)
+    assert people[1]["name"] == "Priya Rao" and people[3]["hidden"] and not people[1]["hidden"]
+
+    # Person 2 is really Priya too.
+    assert pipeline.edit_person(shoot, 1, "merge", other=2) == 1
+    people = _again(shoot)
+    assert set(people) == {1, 3} and people[1]["frames"] == [p["id"] for p in ps[0:7]]
+    assert all(people_of == [1] for people_of in (p["people"] for p in ps[0:7]))
+    # Numbered differently the next time the grouping runs: the corrections follow the faces.
+    shoot.faces = [dict(_found(5, ps[7:10])), dict(_found(6, ps[4:7])), dict(_found(7, ps[0:4]))]
+    people = _again(shoot)
+    assert {c["id"]: (c["name"], c["hidden"], c["photos"]) for c in people.values()} == {
+        7: ("Priya Rao", False, 7), 5: ("", True, 3)}
+
+    pipeline.edit_person(shoot, 7, "split")
+    pipeline.edit_person(shoot, 5, "show")
+    pipeline.edit_person(shoot, 7, "name", name="")
+    people = _again(shoot)
+    assert set(people) == {5, 6, 7} and not any(c["name"] or c["hidden"] for c in people.values())
+
+
+def test_a_photo_taken_out_of_a_person_stays_out_and_their_name_holds(shoot_dir):
+    shoot = _people_shoot(shoot_dir)
+    ps = shoot.photos
+    pipeline.edit_person(shoot, 1, "name", name="Sam")
+    cover = shoot.people[0]["cover"][0]
+    assert pipeline.edit_person(shoot, 1, "remove", photo=cover) == 1  # the face the name was pinned to
+    people = _again(shoot)
+    assert people[1]["name"] == "Sam" and cover not in people[1]["frames"] and people[1]["photos"] == 3
+    assert shoot.by_id(cover)["people"] == []
+    pipeline.edit_person(shoot, 1, "restore", photo=cover, face=0)  # undone
+    assert _again(shoot)[1]["photos"] == 4 and shoot.by_id(cover)["people"] == [1]
+    pipeline.edit_person(shoot, 1, "merge", other=2)
+    assert _again(shoot)[1]["merged"] and not _again(shoot)[3]["merged"]
+    with pytest.raises(KeyError):
+        pipeline.edit_person(shoot, 1, "remove", photo=ps[9]["id"])  # not one of theirs
+    with pytest.raises(KeyError):
+        pipeline.edit_person(shoot, 9, "hide")

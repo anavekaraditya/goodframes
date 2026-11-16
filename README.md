@@ -57,6 +57,12 @@ cull keeps your best 40. If the shoot has fewer moments than that, the strongest
 the set, and if there aren't 40 frames worth keeping, it tells you instead of padding with weak ones.
 Changing the number after a cull is free unless new frames need ranking.
 
+Have photos you can't come home without? Add them to the **Shot list**: "Cake cutting", "Whole
+family together", "The rings". Claude marks the frames that show each one, and the cull keeps the
+best frame of every shot, even when it's weaker than the frames around it. The results show which
+shots are covered and which have no frame at all. Adding a shot after a cull reviews the shoot
+again (the cost is shown first); removing one is free.
+
 <img src="docs/screenshots/brief.jpg" alt="The brief: a short conversation with Claude on the left, and the brief it wrote on the right, with the estimated cost" width="100%">
 
 ### See the shoot sorted into moments

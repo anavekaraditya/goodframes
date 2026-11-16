@@ -667,6 +667,13 @@
     $("#brief-count-hint").textContent = d.target_count
       ? `The cull keeps your best ${d.target_count}. With fewer moments than that, the strongest extra frames fill the set.`
       : "Leave it empty and Claude recommends how many to keep.";
+    $("#brief-shots").innerHTML = d.shots.map((s, k) =>
+      `<li><span>${esc(s)}</span><button type="button" class="icon-btn" data-drop-shot="${k}" aria-label="Remove ${esc(s)}" title="Remove">${ICON.close}</button></li>`).join("");
+    $("#brief-shots").hidden = !d.shots.length;
+    $("#brief-shot-form").hidden = d.shots.length >= 12;
+    $("#brief-shots-hint").textContent = d.shots.length
+      ? "The cull keeps the best frame of each, and tells you which it couldn't find."
+      : "Photos you must come away with. The cull keeps the best frame of each.";
     $("#brief-style").hidden = !b.suggestions.length;
     $("#brief-suggestions").innerHTML = b.suggestions.map((s) =>
       `<label><input type="checkbox" value="${esc(s)}"> <span>${esc(s)}</span></label>`).join("");
@@ -675,7 +682,7 @@
     $("#brief-rerun").textContent = work;
     const confirm = $("#brief-confirm");
     confirm.textContent = est.requests ? `Confirm and start · about $${est.cost.toFixed(2)}` : "Confirm · no cost";
-    confirm.disabled = app.briefBusy || countTimer !== null;
+    confirm.disabled = app.briefBusy || countTimer !== null || shotsSaving;
     $("#brief-send").disabled = $("#brief-standard").disabled = app.briefBusy;
   }
 
@@ -743,6 +750,36 @@
     clearTimeout(countTimer);
     $("#brief-count").value = "";
     saveCount();
+  });
+
+  // The shot list is part of the brief too: saved straight away, applied on confirm.
+  let shotsSaving = false;
+  async function saveShots(shots) {
+    shotsSaving = true;
+    $("#brief-confirm").disabled = true;
+    try {
+      app.brief = await api("/api/brief/shots", { body: { shots } });
+      $("#brief-error").textContent = "";
+    } catch (err) {
+      $("#brief-error").textContent = `The shot list wasn't saved: ${err.message}`;
+    }
+    shotsSaving = false;
+    renderBrief();
+  }
+  $("#brief-shot-form").addEventListener("submit", (e) => {
+    e.preventDefault();
+    const text = $("#brief-shot").value.trim();
+    if (!text || shotsSaving) return;
+    $("#brief-shot").value = "";
+    saveShots([...app.brief.draft.shots, text]);
+  });
+  $("#brief-shot").addEventListener("keydown", (e) => {
+    e.stopPropagation();
+    if (e.key === "Escape") $("#brief").hidden = true;
+  });
+  $("#brief-shots").addEventListener("click", (e) => {
+    const b = e.target.closest("[data-drop-shot]");
+    if (b && !shotsSaving) saveShots(app.brief.draft.shots.filter((_, k) => k !== +b.dataset.dropShot));
   });
 
   $("#brief-standard").addEventListener("click", async () => {
@@ -927,6 +964,34 @@
     return { pick: c.pick, gem: c.gem, moments, rejected: c.rejected };
   }
 
+  // The shot list against the cull: which shots have a pick, and which have none.
+  function renderCoverage(est) {
+    const cov = app.shoot.coverage || [];
+    const box = $("#coverage");
+    // Until every moment has been reviewed against the list, "missing" would be a guess.
+    box.hidden = !cov.length || !reviewed(app.shoot) || app.refining || !!(est && est.moments);
+    if (box.hidden) return;
+    const done = cov.filter((c) => c.picks.length).length;
+    const item = (c) => {
+      if (c.picks.length) {
+        const more = c.picks.length > 1 ? ` <span class="n">${c.picks.length}</span>` : "";
+        return `<li><button type="button" class="shot ok" data-shot-photo="${c.picks[0]}" title="Open the pick">${ICON.check}${esc(c.shot)}${more}</button></li>`;
+      }
+      if (c.others.length) {
+        const n = c.others.length;
+        return `<li><button type="button" class="shot weak" data-shot-photo="${c.others[0]}" title="Open the frame">${esc(c.shot)}<span class="n">${n} unpicked ${n === 1 ? "frame" : "frames"}</span></button></li>`;
+      }
+      return `<li><span class="shot none">${esc(c.shot)}<span class="n">no frame found</span></span></li>`;
+    };
+    const head = done === cov.length ? `Shot list: all ${cov.length} covered`
+      : `Shot list: ${done} of ${cov.length} covered`;
+    box.innerHTML = `<b>${head}</b><ul class="shots">${cov.map(item).join("")}</ul>`;
+  }
+  $("#coverage").addEventListener("click", (e) => {
+    const b = e.target.closest("[data-shot-photo]");
+    if (b) openDetail(+b.dataset.shotPhoto);
+  });
+
   function renderResults() {
     const c = counts();
     $$("#tabs button").forEach((b) => {
@@ -948,6 +1013,7 @@
     $("#shortfall").hidden = !(target && have < target && reviewed(app.shoot));
     $("#shortfall").textContent = `You asked for ${target} photos, but only ${have} ${have === 1 ? "frame was" : "frames were"} `
       + "strong enough to keep. You can add more yourself from the Moments tab.";
+    renderCoverage(est);
     const unmet = app.shoot.unmet || [];
     $("#unmet").hidden = !unmet.length;
     $("#unmet").textContent = unmet.length ? `No frame found for: ${unmet.join(", ")}` : "";
@@ -994,7 +1060,7 @@
   $("#shortcuts-btn").addEventListener("click", () => ($("#shortcuts").hidden = false));
 
   const LABEL = { pick: "Pick", gem: "Gem", rejected: "Reject", similar: "Similar", below: "Below cut", candidate: "Unreviewed" };
-  const ICON = { check: icon("pick"), gem: icon("gem"), reject: icon("reject") };
+  const ICON = { check: icon("pick"), gem: icon("gem"), reject: icon("reject"), close: icon("close") };
 
   // Changes when the recipe does, so an edited preview is never a stale one.
   const rev = (p) => encodeURIComponent(p.edit.join("|"));
@@ -1180,7 +1246,8 @@
       + (canEdit ? `<b class="applied">The preview applies</b>${esc(p.edit.join(" · "))}
         <span class="fine">A quick preview of where the edit leads, not a finished edit.</span>` : "");
     const cut = p.status === "below" && p.why ? `Why it was left out: ${p.why}. ` : "";
-    $("#detail-notes").textContent = cut + (p.notes.length ? "Technical: " + p.notes.join(" · ") : "");
+    const listed = (p.shots || []).length ? `On your shot list: ${p.shots.join(", ")}. ` : "";
+    $("#detail-notes").textContent = listed + cut + (p.notes.length ? "Technical: " + p.notes.join(" · ") : "");
     $("#detail-actions").innerHTML = `
       <button class="btn ${p.status === "pick" ? "primary" : ""}" data-act="pick">${ICON.check}${p.status === "pick" ? "Picked" : "Pick"}</button>
       <button class="btn ${p.status === "gem" ? "primary gem" : ""}" data-act="gem">${ICON.gem}${p.status === "gem" ? "Hidden gem" : "Mark as gem"}</button>

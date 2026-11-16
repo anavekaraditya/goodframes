@@ -50,6 +50,7 @@ class Shoot:
         self.brief = brief.applied(None)  # the confirmed brief, as it applies to reviews
         self.selection = None
         self.unmet = []
+        self.coverage = []    # per shot on the shot list: the picks that show it, and other frames that do
 
     def by_id(self, pid):
         return self.photos[pid - 1]
@@ -244,9 +245,13 @@ def review(shoot, reviewer, on_event=_noop, workers=4, screener=None):
             for pid, r in res.items():  # side-by-side scores are the better-calibrated ones
                 results[pid].update(score=r["score"], reason=r["reason"])
             usages.append((usage, rv.model))
+        listed = shoot.brief.get("review_shots", [])
         for pid, r in results.items():
             r["best"] = pid in best_ids
             r["brief_key"] = shoot.brief["review_key"]
+            # Saved as the shot's words, so removing or reordering the list later keeps the tags right.
+            r["shots"] = [listed[n - 1] for n in dict.fromkeys(r.get("shots") or [])
+                          if isinstance(n, int) and 0 < n <= len(listed)]
         return results, usages
 
     def run(moment_id, batches):
@@ -318,7 +323,17 @@ def _finalists(shoot):
     target = shoot.brief["brief"].get("target_count") or 0
     several = shoot.brief["per_moment"] == "few" or len(best) < target
     extra = [p for p in strong if not p["review"].get("best")] if several else []
-    return (sorted(best, key=lambda p: -p["final"]) + sorted(extra, key=lambda p: -p["final"]))[:MAX_FINALISTS]
+    # The strongest frame of each shot on the shot list is compared too, even a weak one.
+    cover = []
+    for shot in shoot.brief["brief"].get("shots", []):
+        shows = [p for p in shoot.photos if shot in p.get("shots", ()) and p.get("review")
+                 and p["status"] != "rejected" and p["final"] is not None]
+        if shows and not any(p in best for p in shows):
+            top = max(shows, key=lambda p: p["final"])
+            if top not in cover:
+                cover.append(top)
+    extra = [p for p in extra if p not in cover]
+    return (sorted(best, key=lambda p: -p["final"]) + cover + sorted(extra, key=lambda p: -p["final"]))[:MAX_FINALISTS]
 
 
 def _final_edit(shoot):
@@ -363,9 +378,12 @@ def decide(shoot, settings=None):
     """Apply reviews + overrides: the final edit's selection (or score threshold), then Hidden gems."""
     s = dict(DEFAULT_SETTINGS, **(settings or shoot.store.get_meta("settings", {})))
     reviews, overrides = shoot.store.reviews(), shoot.store.overrides()
+    shots = shoot.brief["brief"].get("shots", [])
+    listed = {s.lower(): s for s in shots}
     for p in shoot.photos:
         r = reviews.get(p["fp"])
         p["review"] = r
+        p["shots"] = [listed[t.lower()] for t in (r or {}).get("shots", []) if t.lower() in listed]
         p["final"] = None
         if p["reject"]:
             p["status"], p["why"] = "rejected", p["reject"]
@@ -384,6 +402,7 @@ def decide(shoot, settings=None):
     shoot.selection = None
     shoot.unmet = edit.get("unmet", []) if edit else []
     cuts = {}
+    usable = [p for p in shoot.photos if p["status"] == "candidate" and p["review"]]
     if edit:
         size = min(int(s["selection_size"]) or edit["keep_count"], len(edit["ranking"]))
         selected = set(edit["ranking"][:size])
@@ -392,12 +411,39 @@ def decide(shoot, settings=None):
             for p in shoot.photos:
                 if p["fp"] == fp:
                     p["rank"] = rank
+    else:
+        selected = {p["fp"] for p in usable if p["review"].get("best") and p["final"] >= s["min_score"]}
+
+    # The shot list: every shot that has a usable frame gets its best one into the selection.
+    order = {fp: k for k, fp in enumerate(edit["ranking"])} if edit else {}
+    added = {}
+    for shot in shots:
+        shows = [p for p in usable if shot in p["shots"] and p["override"] not in ("unpick", "reject")]
+        if shows and not any(p["fp"] in selected or p["override"] == "pick" for p in shows):
+            top = min(shows, key=lambda p: (order.get(p["fp"], len(order)), -p["final"]))
+            selected.add(top["fp"])
+            added[top["fp"]] = shot
+    # With a fixed number of photos, a frame added for the list takes the place of the weakest
+    # frame that isn't itself the only one of a listed shot.
+    bumped = set()
+    if edit and added and int(s["selection_size"]):
+        by_fp = {p["fp"]: p for p in usable}
+        for fp in reversed(edit["ranking"][:size]):
+            if len(selected) <= size:
+                break
+            only = any(not any(shot in by_fp[o]["shots"] for o in selected if o != fp and o in by_fp)
+                       for shot in by_fp[fp]["shots"]) if fp in by_fp else False
+            if fp not in added and not only:
+                selected.discard(fp)
+                bumped.add(fp)
+    if edit:
         cuts = {fp: edit["reasons"].get(fp) or "Just outside the selection" for fp in edit["ranking"][size:]}
+        cuts.update(dict.fromkeys(bumped, "Made room for a frame from your shot list"))
+        for fp in added:
+            cuts.pop(fp, None)
 
     def chosen(p):
-        if edit:
-            return p["fp"] in selected
-        return p["review"].get("best") and p["final"] >= s["min_score"]
+        return p["fp"] in selected
 
     for m in shoot.moments:
         cands = [p for p in candidates(shoot, m) if p["status"] == "candidate"]
@@ -406,6 +452,8 @@ def decide(shoot, settings=None):
         best = sorted((p for p in reviewed if chosen(p)), key=lambda p: -p["final"])
         for p in best:
             p["status"] = "pick"
+            if p["fp"] in added:
+                p["why"] = f"Kept for your shot list: {added[p['fp']]}"
         top = best[0] if best else None
         for p in cands:
             if p["status"] == "pick":
@@ -438,6 +486,12 @@ def decide(shoot, settings=None):
         elif o in ("unpick", "ungem") and p["status"] in ("pick", "gem"):
             p["status"], p["why"] = "below", "Removed by you"
 
+    # What became of each shot: the picks that show it, and the other frames that do.
+    shoot.coverage = [{"shot": shot,
+                       "picks": [p["id"] for p in shoot.photos if shot in p["shots"] and p["status"] == "pick"],
+                       "others": [p["id"] for p in shoot.photos if shot in p["shots"] and p["status"] != "pick"]}
+                      for shot in shots]
+
 
 def set_override(shoot, pid, action, undo=False, forget=False):
     """action: pick | unpick | gem | ungem | reject | None (clear). Records taste too.
@@ -464,6 +518,7 @@ def summary(p):
         "reason": r.get("reason"), "edit_potential": r.get("edit_potential"),
         "edit_recipe": r.get("edit_recipe"), "flaws": r.get("fixable_flaws", []),
         "edit": gemedit.describe(gemedit.adjustments(r, p["metrics"])),  # what the after-edit preview applies
+        "shots": p.get("shots", []),
         "rank": p.get("rank"), "shoot_type": r.get("shoot_type"), "best": bool(r.get("best")),
         "subscores": {k: r[k] for k in ("impact", "moment", "light", "composition", "subject_focus") if k in r},
         "notes": p.get("notes", []), "override": p.get("override"),
@@ -480,6 +535,7 @@ def state(shoot):
         "selection": shoot.selection,
         "target": shoot.brief["brief"].get("target_count"),
         "unmet": shoot.unmet,
+        "coverage": shoot.coverage,
         "counts": {k: sum(p["status"] == k for p in shoot.photos)
                    for k in ("pick", "gem", "similar", "below", "candidate", "rejected")},
     }
@@ -531,7 +587,7 @@ def brief_turn(shoot, reviewer, text=None):
     data, usage = reviewer.brief_chat(messages, sample, _chat_context(shoot, state))
     saved = taste.lasting()
     state["messages"] = messages + [{"role": "assistant", "text": data["reply"]}]
-    state["draft"] = brief.normalize(data)
+    state["draft"] = brief.normalize(dict({"shots": state["draft"]["shots"]}, **data))
     state["rerun"] = data["rerun"] if data["rerun"] in brief.RERUNS else "full_review"
     state["suggestions"] = [s for s in brief.clean_list(data["style_suggestions"]) if s not in saved]
     state["spent"] = round(state["spent"] + usage_cost(usage, reviewer.model), 4)
@@ -543,7 +599,7 @@ def brief_turn(shoot, reviewer, text=None):
 def standard_brief(shoot):
     """Replace the draft with the standard brief, keeping the photo count. No API call."""
     state = brief.load(shoot.store)
-    state["draft"] = dict(brief.STANDARD, target_count=state["draft"]["target_count"])
+    state["draft"] = dict(brief.STANDARD, target_count=state["draft"]["target_count"], shots=state["draft"]["shots"])
     state["rerun"] = "full_review"
     state["suggestions"] = []
     state["version"] += 1
@@ -555,6 +611,15 @@ def set_target(shoot, count):
     """Set how many photos the cull should keep (None: Claude's recommendation). No API call."""
     state = brief.load(shoot.store)
     state["draft"] = brief.normalize(dict(state["draft"], target_count=count))
+    state["version"] += 1
+    brief.save(shoot.store, state)
+    return state
+
+
+def set_shots(shoot, shots):
+    """Set the shot list: the photos the cull must come away with. No API call."""
+    state = brief.load(shoot.store)
+    state["draft"] = brief.normalize(dict(state["draft"], shots=shots))
     state["version"] += 1
     brief.save(shoot.store, state)
     return state

@@ -17,7 +17,7 @@ MAX_STOPS = 2.5        # exposure change beyond this is noise, not a rescue
 MAX_ROTATION = 8.0     # same limit as the tilt the technical pass reports
 
 _KNEE = 0.55           # linear level above which a lifted exposure is rolled off
-_NUM = r"([+-−–]?\s*\d+(?:\.\d+)?)"
+_NUM = r"([+\-−–]?\s*\d+(?:\.\d+)?)"  # an optional sign (-, minus or en dash), then the number
 _RATIO = re.compile(r"\b(\d{1,2})\s*[:x×]\s*(\d{1,2})\b")
 
 

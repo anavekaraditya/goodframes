@@ -14,7 +14,9 @@ shaken and blinking frames, keeps the best shot of every moment, and tells you *
 ![Powered by Claude](https://img.shields.io/badge/reviews%20by-Claude-cc7b54)
 ![JPEG · HEIC · RAW](https://img.shields.io/badge/JPEG%20%C2%B7%20HEIC%20%C2%B7%20RAW-supported-dfbd78)
 
-[Features](#features) · [Quick start](#quick-start) · [How it works](#how-it-works) ·
+**[Download the beta for Mac](https://github.com/anavekaraditya/goodframes/releases/latest)**
+
+[Features](#features) · [Download](#download) · [Run from source](#run-from-source) · [How it works](#how-it-works) ·
 [Keyboard](#keyboard-shortcuts) · [Privacy and cost](#privacy-and-cost) · [FAQ](#faq) ·
 [Development](#development)
 
@@ -133,7 +135,28 @@ Choose a folder, drop one on the window, or plug in a camera card and click **Cu
 | **Free to reopen** | Reviews are saved with the shoot, so opening it again costs nothing. |
 | **Light and dark** | Both themes, set in Settings. |
 
-## Quick start
+## Download
+
+Goodframes is in beta. **[Download the latest Goodframes.dmg](https://github.com/anavekaraditya/goodframes/releases/latest)**
+from Releases.
+
+**You need:** a Mac with Apple silicon (M1 or later) running macOS 12 or later, and a
+[Claude API key](https://console.anthropic.com/settings/keys). The app stores the key in your macOS Keychain.
+
+1. Open `Goodframes.dmg` and drag **Goodframes** into **Applications**.
+2. Open Goodframes. macOS says it can't verify the developer, because the beta isn't signed by
+   Apple yet. Click **Done**.
+3. Open **System Settings › Privacy & Security**, scroll down, and click **Open Anyway** next to
+   Goodframes. You only do this once.
+4. Answer four quick questions about how you shoot, then paste your API key.
+
+**What it costs:** the app is free. Claude's reviews are billed to your own API key, and every
+cull shows its price before it starts. A 120-photo shoot costs about $0.35; a 1,234-photo trip
+cost $1.82.
+
+**Found a bug or have an idea?** [Open an issue](https://github.com/anavekaraditya/goodframes/issues).
+
+## Run from source
 
 **You need:** a Mac running macOS 12 or later, Python 3.11, and a
 [Claude API key](https://console.anthropic.com/) (the app stores it in your macOS Keychain).

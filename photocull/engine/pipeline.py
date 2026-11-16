@@ -354,8 +354,9 @@ def _finalists(shoot):
     A brief that wants several frames per moment adds the other strong frames after them, so
     the cap on frames per request never pushes out a moment's best.
     """
+    # A frame that failed the technical check has no final score, even when it was reviewed and then picked by hand.
     strong = [p for p in shoot.photos if p.get("review") and p["status"] != "rejected"
-              and p["final"] >= FINALIST_FLOOR]
+              and p["final"] is not None and p["final"] >= FINALIST_FLOOR]
     best = [p for p in strong if p["review"].get("best")]
     # A count above the number of moments is filled from the strongest other frames.
     target = shoot.brief["brief"].get("target_count") or 0

@@ -7,6 +7,7 @@ import io
 import json
 import os
 import queue
+import shutil
 import subprocess
 import threading
 import webbrowser
@@ -27,6 +28,8 @@ UI_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), "ui")
 app = FastAPI(title="Goodframes")
 DEMO = bool(os.environ.get("PHOTOCULL_DEMO"))  # dev only: fake reviews, no API key needed
 app.state.pick_folder = None  # set by the desktop launcher (native folder dialog)
+app.state.save_file = None    # set by the desktop launcher: a native Save dialog, returns the chosen path
+app.state.share = None        # set by the desktop launcher: the macOS share menu for a file
 
 
 class Events:
@@ -391,6 +394,28 @@ def override(body: OverrideIn):
     return {"state": pipeline.state(shoot)}
 
 
+class PersonIn(BaseModel):
+    id: int
+    action: str
+    name: str | None = None
+    other: int | None = None
+    photo: int | None = None
+    face: int | None = None
+
+
+@app.post("/api/person")
+def person(body: PersonIn):
+    shoot = _need_shoot()
+    if body.action not in ("name", "hide", "show", "merge", "split", "remove", "restore"):
+        raise HTTPException(400, "Unknown action")
+    try:
+        pid = pipeline.edit_person(shoot, body.id, body.action, name=body.name, other=body.other, photo=body.photo,
+                                   face=body.face)
+    except KeyError:
+        raise HTTPException(404, "That person isn't in this shoot any more")
+    return {"state": pipeline.state(shoot), "person": pid}
+
+
 @app.post("/api/shoot-settings")
 def shoot_settings(body: ShootSettingsIn):
     shoot = _need_shoot()
@@ -411,6 +436,57 @@ def reveal(body: FolderIn):
     if os.path.exists(body.folder):
         subprocess.run(["open", body.folder], check=False)
     return {"ok": True}
+
+
+class PhotoIn(BaseModel):
+    id: int
+    rect: list[float] | None = None  # where the Share button is, in page pixels: x, y, width, height
+
+
+def _photo(shoot, pid):
+    if not 1 <= pid <= len(shoot.photos):
+        raise HTTPException(404, "No such photo")
+    p = shoot.by_id(pid)
+    if not os.path.exists(shoot.original(p)):
+        raise HTTPException(404, f"{p['file']} isn't in the shoot folder any more.")
+    return p
+
+
+@app.get("/api/original/{pid}")
+def original(pid: int):
+    """The photo's own file, as a download (the browser's way to save a copy)."""
+    shoot = _need_shoot()
+    p = _photo(shoot, pid)
+    return FileResponse(shoot.original(p), filename=os.path.basename(p["file"]))
+
+
+@app.post("/api/save-copy")
+def save_copy(body: PhotoIn):
+    shoot = _need_shoot()
+    p = _photo(shoot, body.id)
+    if not app.state.save_file:
+        raise HTTPException(501, "No native dialog in browser mode.")
+    dest = app.state.save_file(os.path.basename(p["file"]))
+    if not dest:
+        return {"saved": None}
+    if os.path.abspath(dest) == os.path.abspath(shoot.original(p)):
+        return {"saved": dest}  # saved over itself: nothing to copy
+    shutil.copy2(shoot.original(p), dest)
+    return {"saved": dest}
+
+
+@app.post("/api/share")
+def share(body: PhotoIn):
+    shoot = _need_shoot()
+    p = _photo(shoot, body.id)
+    if not app.state.share:
+        raise HTTPException(501, "Sharing works in the Goodframes app.")
+    try:
+        path = shoot.shareable(p)
+    except OSError:
+        raise HTTPException(500, f"{p['file']} couldn't be read to share.")
+    app.state.share(path, body.rect)
+    return {"shared": path}
 
 
 class UrlIn(BaseModel):

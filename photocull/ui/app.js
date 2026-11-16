@@ -2,7 +2,7 @@
 (function () {
   const $ = (s) => document.querySelector(s);
   const $$ = (s) => [...document.querySelectorAll(s)];
-  const app = { settings: null, shoot: null, estimate: null, tab: "pick", reviewing: null, spent: 0, chatSpent: 0, brief: null, refining: false, briefBusy: false };
+  const app = { settings: null, shoot: null, estimate: null, tab: "pick", person: null, reviewing: null, spent: 0, chatSpent: 0, brief: null, refining: false, briefBusy: false };
 
   async function api(path, opts = {}) {
     const res = await fetch(path, {
@@ -945,6 +945,7 @@
     pick: "The final edit, strongest first. Adjust the selection size in Settings.",
     gem: "Frames with strong bones that an edit will bring to life. Each comes with a recipe.",
     moments: "Every moment of the shoot, with all its candidates.",
+    people: "Everyone who appears in three or more photos, grouped by face on this Mac. Name them, and fix any mix-ups.",
     rejected: "Frames that failed the technical check or Claude's review. Nothing here was deleted.",
   };
 
@@ -961,7 +962,8 @@
   function counts() {
     const c = app.shoot.counts;
     const moments = app.shoot.moments.length;
-    return { pick: c.pick, gem: c.gem, moments, rejected: c.rejected };
+    const people = (app.shoot.people || []).filter((x) => !x.hidden).length;
+    return { pick: c.pick, gem: c.gem, moments, people, rejected: c.rejected };
   }
 
   // The shot list against the cull: which shots have a pick, and which have none.
@@ -995,7 +997,7 @@
   // Who is in the picks: one face per person, with how many picks they're in.
   const MAX_PEOPLE = 16;
   function renderCast() {
-    const cast = app.shoot.people || [];
+    const cast = (app.shoot.people || []).filter((c) => !c.hidden);
     const box = $("#cast");
     box.hidden = cast.length < 2 || !reviewed(app.shoot) || app.refining;
     if (box.hidden) return;
@@ -1003,10 +1005,9 @@
     const person = (c) => {
       const n = c.picks.length;
       const frames = `${c.photos} photos`;
-      const tip = n ? `In ${n} of your picks (${frames}). Click to open one.`
-        : c.usable ? `In none of your picks (${frames}). Click to open their best frame.`
-        : `In none of your picks: all ${frames} were rejected. Click to open one.`;
-      return `<li><button type="button" class="person ${n ? "" : "none"}" data-person-photo="${c.open}" title="${tip}" aria-label="Person ${c.id}. ${tip}">
+      const tip = n ? `in ${n} of your picks (${frames})`
+        : c.usable ? `in none of your picks (${frames})` : `in none of your picks: all ${frames} were rejected`;
+      return `<li><button type="button" class="person ${n ? "" : "none"}" data-person="${c.id}" title="${esc(personName(c))}: ${tip}" aria-label="${esc(personName(c))}. ${tip}">
         <img src="/api/face/${c.cover[0]}/${c.cover[1]}" alt="" loading="lazy"><span class="n">${n}</span></button></li>`;
     };
     const head = out ? `People: ${out} of ${cast.length} ${out === 1 ? "is" : "are"} in none of your picks`
@@ -1014,11 +1015,128 @@
     const more = cast.length > MAX_PEOPLE ? `<span class="more">and ${cast.length - MAX_PEOPLE} more</span>` : "";
     // Anyone left out comes first, so they're never among the ones cut off.
     const shown = [...cast].sort((a, b) => !!a.picks.length - !!b.picks.length || a.id - b.id).slice(0, MAX_PEOPLE);
-    box.innerHTML = `<b>${head}</b><ul class="people">${shown.map(person).join("")}</ul>${more}`;
+    box.innerHTML = `<b>${head}</b><ul class="people">${shown.map(person).join("")}</ul>${more}
+      <button type="button" class="btn ghost small" data-person="">See everyone</button>`;
   }
   $("#cast").addEventListener("click", (e) => {
-    const b = e.target.closest("[data-person-photo]");
-    if (b) openDetail(+b.dataset.personPhoto);
+    const b = e.target.closest("[data-person]");
+    if (b) openPerson(b.dataset.person ? +b.dataset.person : null);
+  });
+
+  /* ---------- people ---------- */
+  const personName = (c) => c.name || `Person ${c.id}`;
+  const faceSrc = (c) => `/api/face/${c.cover[0]}/${c.cover[1]}`;
+  const findPerson = (id) => (app.shoot.people || []).find((c) => c.id === id);
+
+  function openPerson(id) {
+    $("#detail").hidden = true;
+    app.tab = "people";
+    if (id != null) app.person = id;
+    renderResults();
+    $("#results .results-body").scrollTop = 0;
+  }
+
+  // A list of everyone down the side; the chosen person's photos, by what became of them.
+  function peopleView() {
+    const cast = app.shoot.people || [];
+    if (!cast.length) return `<div class="empty">Nobody appears in three or more photos of this shoot.</div>`;
+    const cur = findPerson(app.person) || cast.find((c) => !c.hidden) || cast[0];
+    app.person = cur.id;
+    const done = reviewed(app.shoot);
+    const row = (c) => {
+      const n = c.picks.length;
+      const count = !done ? `${c.photos} photos` : n ? `${n} ${n === 1 ? "pick" : "picks"} · ${c.photos} photos` : `No picks · ${c.photos} photos`;
+      return `<li><button type="button" class="pv-who${c.id === cur.id ? " cur" : ""}${done && !n ? " none" : ""}" data-person="${c.id}"
+        ${c.id === cur.id ? 'aria-current="true"' : ""}><img class="face-img" src="${faceSrc(c)}" alt="" loading="lazy">
+        <span class="nm">${esc(personName(c))}</span><span class="ct">${count}</span></button></li>`;
+    };
+    const shown = cast.filter((c) => !c.hidden), hidden = cast.filter((c) => c.hidden);
+    const left = done ? shown.filter((c) => !c.picks.length).length : 0;
+    const head = left ? `<p class="pv-sum">${left} of ${shown.length} in none of your picks</p>` : "";
+    const rest = hidden.length ? `<details class="pv-hidden"${cur.hidden ? " open" : ""}><summary>Hidden <span>${hidden.length}</span></summary>
+      <ul>${hidden.map(row).join("")}</ul></details>` : "";
+    return `<div class="pv"><aside class="pv-list" aria-label="People">${head}<ul>${shown.map(row).join("")}</ul>${rest}</aside>
+      <section class="pv-main" aria-label="${esc(personName(cur))}">${personPage(cur, cast)}</section></div>`;
+  }
+
+  function personPage(c, cast) {
+    const ps = app.shoot.photos;
+    const frames = c.frames.map((id) => ps[id - 1]);
+    const picks = c.picks.map((id) => ps[id - 1]);
+    const best = (a, b) => (b.final ?? -1) - (a.final ?? -1) || b.technical - a.technical;
+    const others = frames.filter((p) => p.status !== "pick" && p.status !== "rejected").sort(best);
+    const rejects = frames.filter((p) => p.status === "rejected");
+    const done = reviewed(app.shoot);
+    const stat = done ? (picks.length ? `In ${picks.length} of your picks · ${c.photos} photos`
+      : `In none of your picks · ${c.photos} photos${others.length ? ". Pick one below to include them." : ""}`)
+      : `${c.photos} photos`;
+    const section = (title, list, empty) => `<div class="pv-sec"><h4>${title} <span class="n">${list.length}</span></h4>
+      ${list.length ? `<div class="grid">${list.map(tile).join("")}</div>` : `<p class="pv-none">${empty}</p>`}</div>`;
+    const more = cast.filter((o) => o.id !== c.id);
+    const merge = more.length ? `<div class="pv-merge" id="pv-merge" hidden>
+        <p>Who else is this? Their photos join ${esc(personName(c))}.</p>
+        <ul>${more.map((o) => `<li><button type="button" data-merge="${o.id}" title="${esc(personName(o))}">
+          <img class="face-img" src="${faceSrc(o)}" alt="" loading="lazy"><span>${esc(personName(o))}</span></button></li>`).join("")}</ul></div>` : "";
+    return `<div class="pv-head"><img class="face-img big" src="${faceSrc(c)}" alt="">
+        <div class="pv-title"><input id="pv-name" class="pv-name" value="${esc(c.name)}" placeholder="Person ${c.id}" maxlength="40"
+          aria-label="Name this person" title="Name this person" autocomplete="off" spellcheck="false">
+          <p class="pv-stat">${stat}${c.hidden ? " · Hidden" : ""}</p></div>
+        <div class="pv-acts">
+          ${more.length ? `<button type="button" class="btn small" data-pv="merge" aria-expanded="false">${icon("people")}Same person as…</button>` : ""}
+          ${c.merged ? `<button type="button" class="btn ghost small" data-pv="split">Undo merge</button>` : ""}
+          <button type="button" class="btn ghost small" data-pv="${c.hidden ? "show" : "hide"}" title="${c.hidden
+            ? "Count them again" : "A passer-by, a poster, a stranger: leave them out of the People counts"}">${c.hidden ? "Show again" : "Hide"}</button>
+        </div></div>${merge}
+      ${done ? section("In your picks", picks, "None yet.") + section("Not picked", others, "Every frame of theirs that could be a pick already is.")
+        : section("Photos", frames.filter((p) => p.status !== "rejected"), "None.")}
+      ${rejects.length ? section("Rejected", rejects, "") : ""}`;
+  }
+
+  async function editPerson(body, message, undo) {
+    let data;
+    try {
+      data = await api("/api/person", { body: { id: app.person, ...body } });
+    } catch (err) {
+      return toast(err.message);
+    }
+    app.shoot = data.state;
+    app.person = data.person;
+    renderResults();
+    if (message) toast(message, undo && { label: "Undo", run: undo });
+  }
+
+  function personAct(act, c) {
+    const name = personName(c);
+    if (act === "merge") {
+      const box = $("#pv-merge"), b = $('[data-pv="merge"]');
+      box.hidden = !box.hidden;
+      b.setAttribute("aria-expanded", !box.hidden);
+    } else if (act === "split") editPerson({ action: "split" }, `Split ${name} back up`);
+    else if (act === "hide") editPerson({ action: "hide" }, `Hid ${name}`, () => editPerson({ action: "show" }));
+    else if (act === "show") editPerson({ action: "show" }, `${name} is counted again`);
+  }
+
+  function notThem(c, pid) {
+    if (c.frames.length < 2) return toast("That's their only photo. Hide them instead.");
+    const k = c.faces[pid];
+    editPerson({ action: "remove", photo: pid }, `Took that photo out of ${personName(c)}`,
+      () => editPerson({ action: "restore", photo: pid, face: k }));
+  }
+
+  function mergeInto(c, other) {
+    const o = findPerson(other);
+    editPerson({ action: "merge", other }, `${personName(o)} is now part of ${personName(c)}`,
+      () => editPerson({ action: "split" }));
+  }
+
+  $("#grid").addEventListener("change", (e) => {
+    if (e.target.id !== "pv-name") return;
+    const c = findPerson(app.person);
+    const name = e.target.value.trim();
+    if (c && name !== c.name) editPerson({ action: "name", name });
+  });
+  $("#grid").addEventListener("keydown", (e) => {
+    if (e.target.id === "pv-name" && e.key === "Enter") e.target.blur();
   });
 
   function renderResults() {
@@ -1027,6 +1145,9 @@
       b.querySelector("b").textContent = c[b.dataset.tab];
       b.setAttribute("aria-selected", b.dataset.tab === app.tab);
     });
+    const anyone = (app.shoot.people || []).length > 0;
+    $('#tabs [data-tab="people"]').hidden = !anyone;
+    if (app.tab === "people" && !anyone) app.tab = "pick";
     $("#tab-intro").textContent = INTRO[app.tab];
     const est = app.estimate;
     $("#update-notice").hidden = app.refining || !est || !est.requests;
@@ -1044,12 +1165,15 @@
       + "strong enough to keep. You can add more yourself from the Moments tab.";
     renderCoverage(est);
     renderCast();
+    if (app.tab === "people") $("#cast").hidden = true;  // this tab is the long form of it
     const unmet = app.shoot.unmet || [];
     $("#unmet").hidden = !unmet.length;
     $("#unmet").textContent = unmet.length ? `No frame found for: ${unmet.join(", ")}` : "";
     const ps = app.shoot.photos;
     let html = "";
-    if (app.tab === "moments") {
+    if (app.tab === "people") {
+      html = peopleView();
+    } else if (app.tab === "moments") {
       app.shoot.moments.forEach((m) => {
         const members = m.members.map((id) => ps[id - 1]);
         const shown = members.filter((p) => p.status !== "rejected");
@@ -1109,6 +1233,7 @@
         <button class="chip-btn reject ${p.override === "reject" ? "on" : ""}" data-act="reject" aria-label="Reject (X)" title="Reject (X)">${ICON.reject}</button>
       </div>
       ${after ? `<span class="after-tag">After edit</span>` : ""}
+      ${app.tab === "people" ? `<button class="not-them" data-act="not-them" title="This isn't them: take the photo out">Not them</button>` : ""}
       <img loading="lazy" src="${after ? `/api/edited/${p.id}?r=${rev(p)}` : `/api/thumb/${p.fp}`}" alt="${esc(p.file)}">
       <div class="meta"><p class="reason">${esc(reason)}</p>${line}</div></div>`;
   }
@@ -1125,13 +1250,20 @@
   });
 
   $("#grid").addEventListener("click", (e) => {
+    const who = e.target.closest("[data-person]");
+    if (who) return openPerson(+who.dataset.person);
+    const pv = e.target.closest("[data-pv]");
+    if (pv) return personAct(pv.dataset.pv, findPerson(app.person));
+    const m = e.target.closest("[data-merge]");
+    if (m) return mergeInto(findPerson(app.person), +m.dataset.merge);
     const c = e.target.closest("[data-compare]");
     if (c) return openCompare(+c.dataset.compare);
     const t = e.target.closest(".tile");
     if (!t) return;
     const id = +t.dataset.id;
     const act = e.target.closest("[data-act]");
-    if (act) toggle(id, act.dataset.act);
+    if (act && act.dataset.act === "not-them") notThem(findPerson(app.person), id);
+    else if (act) toggle(id, act.dataset.act);
     else openDetail(id);
   });
   $("#grid").addEventListener("keydown", (e) => {
@@ -1270,6 +1402,8 @@
       .map(([k, v]) => `<dt>${k}</dt><dd>${(+v).toFixed(1)}</dd>`).join("");
     const rank = p.rank ? `<dt>Final edit</dt><dd>#${p.rank}</dd>` : "";
     $("#detail-scores").innerHTML = rank + rows + `<dt>Taken</dt><dd>${time(p.taken)}</dd>`;
+    renderStats(p);
+    $("#detail-share").hidden = !app.settings.desktop && !navigator.canShare;
     const recipe = $("#detail-recipe");
     recipe.hidden = !p.edit_recipe && !canEdit;
     recipe.innerHTML = (p.edit_recipe ? `<b>Edit recipe</b>${esc(p.edit_recipe)}` : "")
@@ -1277,10 +1411,15 @@
         <span class="fine">A quick preview of where the edit leads, not a finished edit.</span>` : "");
     const cut = p.status === "below" && p.why ? `Why it was left out: ${p.why}. ` : "";
     const listed = (p.shots || []).length ? `On your shot list: ${p.shots.join(", ")}. ` : "";
+    const here = (p.people || []).map(findPerson).filter(Boolean);
+    $("#detail-people").hidden = !here.length;
+    $("#detail-people").innerHTML = here.length ? `<h4 class="eyebrow">In this photo</h4><ul>${here.map((c) => `<li><button type="button"
+      data-person="${c.id}" title="See every photo of ${esc(personName(c))}"><img class="face-img" src="${faceSrc(c)}" alt="">
+      <span>${esc(personName(c))}</span></button></li>`).join("")}</ul>` : "";
     $("#detail-notes").textContent = listed + cut + (p.notes.length ? "Technical: " + p.notes.join(" · ") : "");
     $("#detail-actions").innerHTML = `
       <button class="btn ${p.status === "pick" ? "primary" : ""}" data-act="pick">${ICON.check}${p.status === "pick" ? "Picked" : "Pick"}</button>
-      <button class="btn ${p.status === "gem" ? "primary gem" : ""}" data-act="gem">${ICON.gem}${p.status === "gem" ? "Hidden gem" : "Mark as gem"}</button>
+      <button class="btn ${p.status === "gem" ? "primary gem" : ""}" data-act="gem">${ICON.gem}Gem</button>
       <button class="btn ${p.override === "reject" ? "danger" : "ghost"}" data-act="reject">${ICON.reject}${p.override === "reject" ? "Rejected" : "Reject"}</button>`;
     const moment = app.shoot.moments.find((m) => m.id === p.moment);
     whyNot(p, moment);
@@ -1289,8 +1428,82 @@
       const q = app.shoot.photos[mid - 1];
       return `<img src="/api/thumb/${q.fp}" data-id="${q.id}" class="${q.id === id ? "cur" : q.status}" title="${esc(q.file)}" alt="">`;
     }).join("");
+    renderArrows();
     $("#detail").hidden = false;
   }
+
+  // Previous and next follow the grid behind the photo, the same order as the arrow keys.
+  function neighbours() {
+    const ids = visibleIds(), i = ids.indexOf(detailId);
+    return i < 0 ? [null, null] : [ids[i - 1] ?? null, ids[i + 1] ?? null];
+  }
+  function renderArrows() {
+    const [prev, next] = neighbours();
+    $("#detail-prev").hidden = prev == null;
+    $("#detail-next").hidden = next == null;
+  }
+  $("#detail-prev").addEventListener("click", () => { const [prev] = neighbours(); if (prev != null) openDetail(prev); });
+  $("#detail-next").addEventListener("click", () => { const [, next] = neighbours(); if (next != null) openDetail(next); });
+
+  // The few numbers worth reading at a glance; the rest wait under "All scores".
+  const ASPECTS = { impact: "impact", moment: "the moment", light: "light", composition: "composition", subject_focus: "focus on the subject" };
+  function renderStats(p) {
+    const picks = app.shoot.photos.filter((q) => q.status === "pick").length;
+    const stat = (value, label) => `<div class="stat"><b>${value}</b><span>${label}</span></div>`;
+    const cells = [p.final != null ? stat(`${(+p.final).toFixed(1)}<small>/10</small>`, "Score") : stat("–", "Not reviewed yet")];
+    if (p.status === "pick" && p.rank) cells.push(stat(`#${p.rank}<small> of ${picks}</small>`, "Final edit"));
+    else if (p.status === "gem" && p.edit_potential != null) cells.push(stat(`${(+p.edit_potential).toFixed(1)}<small>/10</small>`, "After edit"));
+    cells.push(stat(esc(time(p.taken)).replace(/\s*([AP]\.?M\.?)$/i, "<small> $1</small>"), "Taken"));
+    $("#detail-stats").innerHTML = cells.join("");
+    const sub = Object.entries(p.subscores || {}).filter(([k]) => ASPECTS[k]).sort((a, b) => b[1] - a[1]);
+    const strong = sub.filter(([, v]) => v >= 7).slice(0, 2).map(([k]) => ASPECTS[k]);
+    const weak = sub.filter(([, v]) => v < 5).slice(-1).map(([k]) => ASPECTS[k]);
+    const line = [strong.length && `Strongest on ${strong.join(" and ")}`, weak.length && `weakest on ${weak[0]}`].filter(Boolean).join("; ");
+    $("#detail-strengths").hidden = !line;
+    $("#detail-strengths").textContent = line ? line[0].toUpperCase() + line.slice(1) + "." : "";
+  }
+
+  /* ---------- save a copy, share ---------- */
+  async function saveCopy(p) {
+    if (!app.settings.desktop) {  // the browser saves it as a download
+      const a = Object.assign(document.createElement("a"), { href: `/api/original/${p.id}`, download: p.file });
+      document.body.append(a);
+      a.click();
+      a.remove();
+      return;
+    }
+    try {
+      const res = await api("/api/save-copy", { body: { id: p.id } });
+      if (res.saved) toast(`Saved a copy as ${res.saved.split("/").pop()}`, { label: "Show", run: () => api("/api/reveal", { body: { folder: res.saved.replace(/\/[^/]*$/, "") } }) });
+    } catch (err) {
+      toast(err.message);
+    }
+  }
+
+  async function sharePhoto(p, btn) {
+    if (!app.settings.desktop) {
+      try {
+        const blob = await (await fetch(`/api/original/${p.id}`)).blob();
+        const file = new File([blob], p.file, { type: blob.type });
+        await navigator.share({ files: [file], title: p.file });
+      } catch (err) {
+        if (err.name !== "AbortError") toast("Sharing works in the Goodframes app. Save a copy instead.");
+      }
+      return;
+    }
+    const r = btn.getBoundingClientRect();
+    btn.disabled = true;
+    try {
+      await api("/api/share", { body: { id: p.id, rect: [r.left, r.top, r.width, r.height] } });
+    } catch (err) {
+      toast(err.message);
+    } finally {
+      btn.disabled = false;
+    }
+  }
+
+  $("#detail-save").addEventListener("click", () => saveCopy(app.shoot.photos[detailId - 1]));
+  $("#detail-share").addEventListener("click", (e) => sharePhoto(app.shoot.photos[detailId - 1], e.currentTarget));
 
   // Frames Claude passed over: who won the moment, and why, with a way to see or question it.
   function whyNot(p, moment) {
@@ -1308,6 +1521,11 @@
           <button class="btn ghost small" data-ask>Ask Claude</button></div>`;
     box.dataset.pick = q ? q.id : "";
   }
+
+  $("#detail-people").addEventListener("click", (e) => {
+    const b = e.target.closest("[data-person]");
+    if (b) openPerson(+b.dataset.person);
+  });
 
   $("#detail-whynot").addEventListener("click", (e) => {
     const p = app.shoot.photos[detailId - 1];

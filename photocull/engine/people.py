@@ -100,3 +100,48 @@ def group(photos):
     for k, person in enumerate(people, 1):
         person["id"] = k
     return people
+
+
+def apply_edits(groups, photos, edits):
+    """The grouping after the photographer's corrections, which outlive a re-run of the grouping.
+
+    edits: {"names": {face: name}, "hidden": [face], "merges": [[face, face]], "removed": [face]},
+    where a face is "<photo fingerprint>:<face index>". A correction follows the person who has
+    that face, so it holds even when the groups are numbered differently next time.
+    Each person gains "name", "hidden", "merged" and "keys" (their faces, in that form).
+    """
+    edits = edits or {}
+    fp = {p["id"]: p["fp"] for p in photos}
+    key = lambda pid, k: f"{fp[pid]}:{k}"
+    removed = set(edits.get("removed", []))
+    out = []
+    for g in groups:
+        faces = {pid: k for pid, k in g["faces"].items() if key(pid, k) not in removed}
+        if not faces:
+            continue
+        cover = g["cover"] if faces.get(g["cover"][0]) == g["cover"][1] else [min(faces), faces[min(faces)]]
+        out.append({"id": g["id"], "faces": faces, "photos": sorted(faces), "cover": cover,
+                    "keys": {key(pid, k) for pid, k in faces.items()}, "name": "", "hidden": False, "merged": False})
+    find = lambda face: next((g for g in out if face in g["keys"]), None)
+    for a, b in edits.get("merges", []):
+        ga, gb = find(a), find(b)
+        if ga and gb and ga is not gb:  # b's faces join a; where both are in a photo, a's face stays
+            for pid, k in gb["faces"].items():
+                ga["faces"].setdefault(pid, k)
+            ga["photos"], ga["keys"] = sorted(ga["faces"]), {key(pid, k) for pid, k in ga["faces"].items()}
+            ga["merged"] = True
+            out.remove(gb)
+    for face, name in (edits.get("names") or {}).items():
+        if (g := find(face)) is not None:
+            g["name"] = name
+    for face in edits.get("hidden", []):
+        if (g := find(face)) is not None:
+            g["hidden"] = True
+    out.sort(key=lambda g: (-len(g["photos"]), g["photos"][0]))
+    return out
+
+
+def face_key(photos, person):
+    """The face a correction to this person is pinned to: their cover face."""
+    pid, k = person["cover"]
+    return f"{photos[pid - 1]['fp']}:{k}"

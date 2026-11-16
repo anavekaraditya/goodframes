@@ -24,6 +24,9 @@
   <symbol id="i-refine" viewBox="0 0 24 24"><path d="M4 6.5A2.5 2.5 0 0 1 6.5 4h11A2.5 2.5 0 0 1 20 6.5v7.5a2.5 2.5 0 0 1-2.5 2.5h-7L6 20.3v-3.8A2.5 2.5 0 0 1 4 14z" style="fill:var(--ifill,none)"/><path d="M8.5 9h7M8.5 12h4.5" style="stroke:var(--iknock,currentColor)"/></symbol>
   <symbol id="i-export" viewBox="0 0 24 24"><path d="M12 3.5v10M8 9.8l4 3.9 4-3.9"/><path d="M4.5 14v3.5a2.5 2.5 0 0 0 2.5 2.5h10a2.5 2.5 0 0 0 2.5-2.5V14"/></symbol>
   <symbol id="i-reject" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5" style="fill:var(--ifill,none)"/><path d="M6 18L18 6" style="stroke:var(--iknock,currentColor)"/></symbol>
+  <symbol id="i-people" viewBox="0 0 24 24"><circle cx="9" cy="8" r="3.2" style="fill:var(--ifill,none)"/><path d="M3 19.5c0-3.4 2.7-5.6 6-5.6s6 2.2 6 5.6"/><path d="M15.5 4.9a3.2 3.2 0 0 1 0 6.2M17.6 14.2c2 .7 3.4 2.6 3.4 5.3"/></symbol>
+  <symbol id="i-download" viewBox="0 0 24 24"><path d="M12 3.5v11.5M7.2 10.5 12 15.2l4.8-4.7"/><path d="M4.5 15.5v3a2 2 0 0 0 2 2h11a2 2 0 0 0 2-2v-3"/></symbol>
+  <symbol id="i-share" viewBox="0 0 24 24"><path d="M12 14.5V3.5M8 7.2 12 3.3l4 3.9"/><path d="M8.5 10.5H7a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-6a2 2 0 0 0-2-2h-1.5"/></symbol>
   <symbol id="i-compare" viewBox="0 0 24 24"><rect x="2.8" y="5" width="8.4" height="14" rx="1.8" style="fill:var(--ifill,none)"/><rect x="12.8" y="5" width="8.4" height="14" rx="1.8" style="fill:var(--ifill,none)"/></symbol>
   <symbol id="i-grid-small" viewBox="0 0 24 24"><rect x="4" y="4" width="6.5" height="6.5" rx="1.2"/><rect x="13.5" y="4" width="6.5" height="6.5" rx="1.2"/><rect x="4" y="13.5" width="6.5" height="6.5" rx="1.2"/><rect x="13.5" y="13.5" width="6.5" height="6.5" rx="1.2"/></symbol>
   <symbol id="i-grid-large" viewBox="0 0 24 24"><rect x="4" y="5" width="16" height="14" rx="2"/></symbol>
@@ -180,6 +183,7 @@
       <button role="tab" data-tab="pick" aria-selected="true">Picks <b></b></button>
       <button role="tab" data-tab="gem">Hidden gems <b></b></button>
       <button role="tab" data-tab="moments">Moments <b></b></button>
+      <button role="tab" data-tab="people" hidden>People <b></b></button>
       <button role="tab" data-tab="rejected">Rejects <b></b></button>
     </nav>
     <div class="topbar-actions">
@@ -265,6 +269,8 @@
     <button class="icon-btn close" data-close aria-label="Close"><svg class="i" aria-hidden="true"><use href="#i-close"/></svg></button>
     <div class="detail-main" id="detail-main">
       <img id="detail-img" alt="">
+      <button class="nav-arrow prev" id="detail-prev" type="button" aria-label="Previous photo" title="Previous photo (←)"><svg class="i" aria-hidden="true"><use href="#i-back"/></svg></button>
+      <button class="nav-arrow next" id="detail-next" type="button" aria-label="Next photo" title="Next photo (→)"><svg class="i" aria-hidden="true"><use href="#i-back"/></svg></button>
       <div class="ba" id="detail-ba" role="group" aria-label="Before or after the edit" hidden>
         <button type="button" data-ba="before" aria-pressed="true">Before</button>
         <button type="button" data-ba="after" aria-pressed="false">After edit <kbd>E</kbd></button>
@@ -272,18 +278,28 @@
       <figure class="crop" id="detail-zoom" title="Zoom to 100% (Z)"><img id="detail-crop" alt="100% crop"><figcaption>100% focus check · <kbd>Z</kbd></figcaption></figure>
     </div>
     <aside class="detail-side">
-      <div class="badge" id="detail-badge"></div>
-      <h3 id="detail-title"></h3>
-      <p id="detail-reason" class="reason"></p>
-      <div id="detail-whynot" class="whynot" hidden></div>
-      <dl class="scores" id="detail-scores"></dl>
-      <div id="detail-recipe" class="recipe" hidden></div>
-      <p id="detail-notes" class="notes"></p>
+      <div class="side-head">
+        <div class="badge" id="detail-badge"></div>
+        <button class="icon-btn" id="detail-save" type="button" aria-label="Save a copy" title="Save a copy of the original"><svg class="i" aria-hidden="true"><use href="#i-download"/></svg></button>
+        <button class="icon-btn" id="detail-share" type="button" aria-label="Share" title="Share: AirDrop, Messages, Mail…"><svg class="i" aria-hidden="true"><use href="#i-share"/></svg></button>
+      </div>
+      <div class="side-title">
+        <p id="detail-reason" class="reason"></p>
+        <h3 id="detail-title"></h3>
+      </div>
+      <div class="stats" id="detail-stats"></div>
+      <p class="strengths" id="detail-strengths" hidden></p>
       <div class="detail-actions" id="detail-actions"></div>
-      <div class="strip-head"><h4 class="eyebrow">Same moment</h4>
-        <button class="btn ghost small" id="detail-compare"><svg class="i" aria-hidden="true"><use href="#i-compare"/></svg>Compare <kbd>C</kbd></button></div>
-      <div class="strip" id="detail-strip"></div>
-      <p class="keys-hint"><kbd>P</kbd> pick <kbd>G</kbd> gem <kbd>X</kbd> reject <kbd>U</kbd> undo <kbd>?</kbd> all keys</p>
+      <div id="detail-whynot" class="whynot" hidden></div>
+      <div id="detail-recipe" class="recipe" hidden></div>
+      <div id="detail-people" class="detail-people" hidden></div>
+      <section class="side-sec">
+        <div class="strip-head"><h4 class="eyebrow">Same moment</h4>
+          <button class="btn ghost small" id="detail-compare"><svg class="i" aria-hidden="true"><use href="#i-compare"/></svg>Compare <kbd>C</kbd></button></div>
+        <div class="strip" id="detail-strip"></div>
+      </section>
+      <p id="detail-notes" class="notes"></p>
+      <details class="all-scores" id="detail-all"><summary>All scores</summary><dl class="scores" id="detail-scores"></dl></details>
     </aside>
   </div>
 </div>

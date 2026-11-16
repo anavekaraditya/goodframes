@@ -12,6 +12,7 @@ from PIL import Image
 
 from . import brief, gemedit, grouping, moments, people, scoring, taste
 from .ingest import THUMB_EDGE, ingest, open_photo
+from .raw import is_raw
 from .review import FACE_CROP_EDGE, MAX_FINALISTS, RUBRIC_VERSION, ReviewError, estimate_cost, usage_cost
 
 # A two-tier review screens every moment with an inexpensive model and sends close calls to the
@@ -51,7 +52,8 @@ class Shoot:
         self.brief = brief.applied(None)  # the confirmed brief, as it applies to reviews
         self.selection = None
         self.unmet = []
-        self.people = []      # faces grouped by person (people.group)
+        self.faces = []       # faces grouped by person, as the grouping found them (people.group)
+        self.people = []      # the same after the photographer's corrections (people.apply_edits)
         self.cast = []        # per person: how many photos, which are picks, and the frame to open
         self.coverage = []    # per shot on the shot list: the picks that show it, and other frames that do
 
@@ -82,6 +84,26 @@ class Shoot:
         with Image.open(self.store.thumb_path(p["fp"])) as im:
             out = gemedit.render(im, adj, [f["box"] for f in p["metrics"]["faces"]])
         return _jpeg(out)
+
+    def original(self, p):
+        """The photo's own file."""
+        return os.path.join(self.folder, p["file"])
+
+    def shareable(self, p):
+        """A file to send to someone: the original, or for a RAW file a full-size JPEG of it.
+
+        The JPEG is made once and kept with the shoot's working files, never next to the original.
+        """
+        path = self.original(p)
+        if not is_raw(path):
+            return path
+        out = os.path.join(self.store.work, "shared", os.path.splitext(p["file"])[0] + ".jpg")
+        if not os.path.exists(out) or os.path.getmtime(out) < os.path.getmtime(path):
+            os.makedirs(os.path.dirname(out), exist_ok=True)
+            im = open_photo(path).convert("RGB")
+            im.save(out + ".part", "JPEG", quality=92)
+            os.replace(out + ".part", out)
+        return out
 
     def read_face(self, p, k):
         """A small square portrait of the k-th face in the frame, from its thumbnail."""
@@ -133,12 +155,9 @@ def analyze(folder, store, genre="auto", on_event=_noop):
     for i, p in enumerate(photos, 1):
         p["id"] = i
         p["status"] = None
-        p["people"] = []
     shoot.photos = photos
-    shoot.people = people.group(photos)
-    for person in shoot.people:
-        for pid in person["photos"]:
-            photos[pid - 1]["people"].append(person["id"])
+    shoot.faces = people.group(photos)
+    _place_people(shoot)
     if not photos:
         on_event({"type": "analyzed", "photos": 0})
         return shoot
@@ -504,22 +523,99 @@ def decide(shoot, settings=None):
         elif o in ("unpick", "ungem") and p["status"] in ("pick", "gem"):
             p["status"], p["why"] = "below", "Removed by you"
 
-    # Who made the picks. A person with none opens on their strongest frame that could still be one.
-    shoot.cast = []
-    for person in shoot.people:
-        frames = [shoot.by_id(pid) for pid in person["photos"]]
-        picks = sorted((p for p in frames if p["status"] == "pick"), key=lambda p: p["rank"] or 10 ** 6)
-        usable = [p for p in frames if p["status"] != "rejected"]
-        best = max(usable or frames, key=lambda p: (p["final"] if p["final"] is not None else -1, p["technical"]))
-        shoot.cast.append({"id": person["id"], "photos": len(frames), "picks": [p["id"] for p in picks],
-                           "usable": len(usable), "open": (picks[0] if picks else best)["id"],
-                           "cover": person["cover"]})
+    _cast(shoot)
 
     # What became of each shot: the picks that show it, and the other frames that do.
     shoot.coverage = [{"shot": shot,
                        "picks": [p["id"] for p in shoot.photos if shot in p["shots"] and p["status"] == "pick"],
                        "others": [p["id"] for p in shoot.photos if shot in p["shots"] and p["status"] != "pick"]}
                       for shot in shots]
+
+
+PEOPLE_EDITS = "people_edits"
+MAX_NAME_CHARS = 40
+
+
+def _place_people(shoot):
+    shoot.people = people.apply_edits(shoot.faces, shoot.photos, shoot.store.get_meta(PEOPLE_EDITS))
+    for p in shoot.photos:
+        p["people"] = []
+    for person in shoot.people:
+        for pid in person["photos"]:
+            shoot.by_id(pid)["people"].append(person["id"])
+
+
+def _cast(shoot):
+    """Who made the picks. A person with none opens on their strongest frame that could still be one."""
+    shoot.cast = []
+    for person in shoot.people:
+        frames = [shoot.by_id(pid) for pid in person["photos"]]
+        picks = sorted((p for p in frames if p["status"] == "pick"), key=lambda p: p["rank"] or 10 ** 6)
+        usable = [p for p in frames if p["status"] != "rejected"]
+        best = max(usable or frames, key=lambda p: (p["final"] if p["final"] is not None else -1, p["technical"]))
+        shoot.cast.append({"id": person["id"], "name": person["name"], "hidden": person["hidden"], "merged": person["merged"],
+                           "photos": len(frames), "frames": person["photos"], "picks": [p["id"] for p in picks],
+                           "usable": len(usable), "open": (picks[0] if picks else best)["id"],
+                           "cover": person["cover"], "faces": {str(k): v for k, v in person["faces"].items()}})
+
+
+def edit_person(shoot, person_id, action, name=None, other=None, photo=None, face=None):
+    """A correction to the grouping. Returns the id the person has afterwards.
+
+    action: name (name="" clears it) | hide | show | merge (other joins this person) |
+    remove (photo isn't this person) | restore (photo's face goes back to whoever it was grouped
+    with: undoes a remove) | split (undo every merge into this person).
+    """
+    person = next((g for g in shoot.people if g["id"] == person_id), None)
+    if person is None:
+        raise KeyError(person_id)
+    edits = shoot.store.get_meta(PEOPLE_EDITS) or {}
+    names, hidden = edits.setdefault("names", {}), edits.setdefault("hidden", [])
+    merges, removed = edits.setdefault("merges", []), edits.setdefault("removed", [])
+    pinned = lambda: {f for f in person["keys"] if f in names or f in hidden or any(f in m for m in merges)}
+    anchor = next(iter(pinned()), None) or people.face_key(shoot.photos, person)
+    if action == "name":
+        for f in person["keys"]:
+            names.pop(f, None)
+        if (name := " ".join((name or "").split())[:MAX_NAME_CHARS]):
+            names[anchor] = name
+    elif action in ("hide", "show"):
+        hidden[:] = [f for f in hidden if f not in person["keys"]]
+        if action == "hide":
+            hidden.append(anchor)
+    elif action == "merge":
+        into = next((g for g in shoot.people if g["id"] == other), None)
+        if into is None or into is person:
+            raise KeyError(other)
+        merges.append([anchor, people.face_key(shoot.photos, into)])
+        if not person["name"] and into["name"]:  # the merged person keeps a name either one had
+            names[anchor] = into["name"]
+    elif action == "split":
+        merges[:] = [m for m in merges if m[0] not in person["keys"]]
+    elif action == "remove":
+        if photo not in person["faces"] or len(person["faces"]) < 2:
+            raise KeyError(photo)
+        gone = f"{shoot.by_id(photo)['fp']}:{person['faces'][photo]}"
+        removed.append(gone)
+        # A correction pinned to that face moves to one this person keeps.
+        keep = next(f for f in sorted(person["keys"]) if f != gone)
+        for f in list(names):
+            if f == gone:
+                names[keep] = names.pop(f)
+        hidden[:] = [keep if f == gone else f for f in hidden]
+        merges[:] = [[keep if f == gone else f for f in m] for m in merges]
+    elif action == "restore":
+        gone = f"{shoot.by_id(photo)['fp']}:{face}"
+        if gone not in removed:
+            raise KeyError(photo)
+        removed.remove(gone)
+    else:
+        raise ValueError(action)
+    shoot.store.set_meta(PEOPLE_EDITS, edits)
+    keys = person["keys"] - ({gone} if action == "remove" else set())
+    _place_people(shoot)
+    _cast(shoot)
+    return next((g["id"] for g in shoot.people if g["keys"] & keys), person_id)
 
 
 def set_override(shoot, pid, action, undo=False, forget=False):

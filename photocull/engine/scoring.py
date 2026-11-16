@@ -126,12 +126,12 @@ def score(photos, groups, genre="auto"):
 def _why_weaker(p, best, siblings):
     witness = _blink_witness(p, siblings)
     if witness:
-        return f"eyes closed/blinking; #{witness['id']} has eyes open"
+        return f"eyes closed/blinking; {witness['file']} has eyes open"
     if p["metrics"]["sharpness"] < 0.8 * best["metrics"]["sharpness"]:
-        return f"softer than near-duplicate #{best['id']}"
+        return f"softer than near-duplicate {best['file']}"
     if p["metrics"]["exposure_score"] < best["metrics"]["exposure_score"] - 0.1:
-        return f"worse exposure than near-duplicate #{best['id']}"
-    return f"near-duplicate of #{best['id']}, slightly weaker"
+        return f"worse exposure than near-duplicate {best['file']}"
+    return f"near-duplicate of {best['file']}, slightly weaker"
 
 
 def _openness(p):

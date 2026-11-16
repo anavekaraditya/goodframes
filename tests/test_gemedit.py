@@ -20,6 +20,9 @@ def test_recipe_numbers_are_read_with_their_direction():
         "exposure": -0.7, "highlights": -30.0, "contrast": 20}
     assert _adj("Lift shadows +1, warm WB +300K, crop to 4:5") == {"shadows": 30.0, "warmth": 300.0, "crop": (4, 5)}
     assert _adj("Cool WB -400K, crop square") == {"warmth": -400.0, "crop": (1, 1)}
+    # A word before the number is not its sign: "down 300K" once read as "n300" and crashed the shoot.
+    assert _adj("Exposure +1.5, lift shadows +50, warm WB down 300K, add contrast")["warmth"] == 300.0
+    assert _adj("Highlights −70, shadows +40")["highlights"] == -70.0
 
 
 def test_flaws_and_measurements_fill_in_for_a_recipe_without_numbers():

@@ -130,3 +130,16 @@ def test_reasons_name_files_not_the_ids_claude_was_shown(shoot_dir):
     assert pipeline.readable("", shoot) == "" and pipeline.readable(None, shoot) is None
     shown = pipeline.state(shoot)["photos"]
     assert not any(re.search(r"#\d", p["why"] or "") for p in shown)  # Goodframes' own notes name files too
+
+
+def test_a_reviewed_reject_picked_by_hand_does_not_break_the_estimate(shoot_dir):
+    shoot, _ = _cull(shoot_dir)
+    blurry = _photo(shoot, "IMG_103")
+    assert blurry["status"] == "rejected" and blurry["reject"]  # failed the technical check
+    # An older cull reviewed it anyway; then the photographer picked it.
+    shoot.store.put_reviews({blurry["fp"]: {"score": 6.0, "reject": False, "reason": "Soft but warm", "best": True}},
+                            MODEL, review.RUBRIC_VERSION)
+    pipeline.set_override(shoot, blurry["id"], "pick")
+    assert blurry["status"] == "pick" and blurry["final"] is None
+    assert pipeline.review_estimate(shoot, MODEL)["requests"] >= 0  # once raised TypeError on the missing score
+    assert blurry["id"] in [p["id"] for p in pipeline.state(shoot)["photos"] if p["status"] == "pick"]

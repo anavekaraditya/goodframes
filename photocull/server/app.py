@@ -475,6 +475,19 @@ def edited(pid: int):
     return Response(data, media_type="image/jpeg", headers={"Cache-Control": "no-cache"})
 
 
+@app.get("/api/face/{pid}/{k}")
+def face(pid: int, k: int):
+    """A small portrait of one face in a frame, for the People strip."""
+    shoot = _need_shoot()
+    try:
+        if pid < 1 or k < 0:
+            raise IndexError
+        data = shoot.read_face(shoot.by_id(pid), k)
+    except (IndexError, OSError):
+        raise HTTPException(404)
+    return Response(data, media_type="image/jpeg", headers={"Cache-Control": "max-age=86400"})
+
+
 @app.get("/api/crop/{pid}")
 def crop(pid: int):
     """A 100% crop around the face (or the sharpest area) of the original file."""

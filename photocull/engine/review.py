@@ -38,7 +38,8 @@ the main face, for checking whether the eyes are really in focus.
 For each frame give:
 - shoot_type, impact, moment, light, composition, subject_focus: as described in the rubric below.
 - score: 1-10, how good the photo is as shot, judged by the rubric below.
-- reason: one short, concrete phrase in photographer language (12 words or fewer).
+- reason: one short, concrete phrase in photographer language (12 words or fewer). Don't refer to
+  other frames by their id: the photographer never sees it. Describe the frame instead.
 - reject: true only for a flaw that makes the frame unusable and no edit can fix.
 - edit_potential: 1-10, how strong the photo could be after a normal Lightroom/phone edit
   (exposure, white balance, straighten, crop, contrast, noise reduction). Never lower than score.
@@ -103,7 +104,8 @@ Rank every frame from strongest to weakest, as the set you would show a client:
   a shoot where everything is distinct and strong can keep a lot.
 
 Give every frame a reason: why it earns its place, or for frames you would cut, why it goes (12
-words or fewer, for example "Repeats the stronger harbour view at #41"). Then give keep_count: how
+words or fewer, for example "Repeats the stronger harbour view at dusk"). Don't refer to other frames
+by their id, which the photographer never sees: describe them instead. Then give keep_count: how
 many frames from the top of your ranking belong in the final edit. Leave unmet empty unless the
 request asks you to list something there."""
 

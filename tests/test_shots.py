@@ -1,3 +1,5 @@
+import re
+
 from conftest import FakeReviewer
 
 from photocull.engine import brief, pipeline, review
@@ -116,3 +118,15 @@ def test_the_final_edit_is_told_which_frames_are_listed_shots(monkeypatch):
     assert "Photo id=2, moment 2, score 8.0" in texts
     assert "shots" in review.OUTPUT_SCHEMA["properties"]["photos"]["items"]["required"]
     assert "shots" in review.BRIEF_CHAT_SCHEMA["required"]
+
+
+def test_reasons_name_files_not_the_ids_claude_was_shown(shoot_dir):
+    from photocull.engine.store import Store
+    shoot = pipeline.analyze(shoot_dir, Store(shoot_dir))
+    first, second = shoot.photos[0]["file"], shoot.photos[1]["file"]
+    assert pipeline.readable("Sharper than #2; repeats #1 and photo id=2", shoot) == (
+        f"Sharper than {second}; repeats {first} and {second}")
+    assert pipeline.readable("Rank #999 stays, 4:5 crop, +300K", shoot) == "Rank #999 stays, 4:5 crop, +300K"
+    assert pipeline.readable("", shoot) == "" and pipeline.readable(None, shoot) is None
+    shown = pipeline.state(shoot)["photos"]
+    assert not any(re.search(r"#\d", p["why"] or "") for p in shown)  # Goodframes' own notes name files too

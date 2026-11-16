@@ -34,7 +34,7 @@ def test_technical_pass(shoot_dir):
 
 def _photo(i, sharp=500.0, technical=0.8, faces=(), reject=None, extreme=False):
     m = {"sharpness": sharp, "exposure_score": 1.0, "faces": [{"eyes_found": e, "sharpness": sharp} for e in faces]}
-    return {"id": i, "metrics": m, "technical": technical, "reject": reject, "extreme": extreme,
+    return {"id": i, "file": f"IMG_{i}.jpg", "metrics": m, "technical": technical, "reject": reject, "extreme": extreme,
             "sharp_in_group": sharp / 500.0, "status": None, "notes": []}
 
 
@@ -83,7 +83,7 @@ def test_blink_needs_a_comparable_sibling():
         assert ps[0]["status"] == "candidate"
     ps = [photo(0, 0), photo(1, 2)]
     scoring.select_in_groups(ps, [[0, 1]])
-    assert ps[0]["status"] == "rejected" and "#1 has eyes open" in ps[0]["reject"]
+    assert ps[0]["status"] == "rejected" and "IMG_1.jpg has eyes open" in ps[0]["reject"]
 
 
 def _eyes_photo(i, eye_open, sharp=500.0):
@@ -96,7 +96,7 @@ def _eyes_photo(i, eye_open, sharp=500.0):
 def test_vision_blink_needs_shut_eyes_and_an_open_sibling():
     blink = [_eyes_photo(0, 0.05), _eyes_photo(1, 0.31)]
     scoring.select_in_groups(blink, [[0, 1]])
-    assert blink[0]["status"] == "rejected" and "#1 has eyes open" in blink[0]["reject"]
+    assert blink[0]["status"] == "rejected" and "IMG_1.jpg has eyes open" in blink[0]["reject"]
     smile = [_eyes_photo(0, 0.13), _eyes_photo(1, 0.31)]  # narrowed by a smile, not shut
     scoring.select_in_groups(smile, [[0, 1]])
     assert smile[0]["status"] == "candidate"

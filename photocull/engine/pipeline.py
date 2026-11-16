@@ -5,6 +5,7 @@ Every stage reports progress through `on_event(dict)` so the UI can animate it.
 import copy
 import io
 import os
+import re
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
@@ -498,7 +499,7 @@ def decide(shoot, settings=None):
             if p["fp"] in cuts:
                 p["status"], p["why"] = "below", cuts[p["fp"]]
             elif top:
-                p["status"], p["why"] = "similar", f"Same moment as pick #{top['id']}"
+                p["status"], p["why"] = "similar", f"Same moment as the pick {top['file']}"
             elif p["review"]:
                 p["status"], p["why"] = "below", "Good, but below the cut"
         # Hidden gems only in moments without a pick: one frame of strong bones, fixable flaws.
@@ -652,10 +653,31 @@ def summary(p):
     }
 
 
+_FRAME_REF = re.compile(r"(?:#\s?|\b(?:photo |frame )?id\s?=\s?)(\d+)\b", re.IGNORECASE)
+
+
+def readable(text, shoot):
+    """Claude's text with its references to frames by number ("#18", "id=18") turned into file names.
+
+    Frames go to Claude numbered by photo id, which the photographer never sees.
+    """
+    if not text:
+        return text
+    n = len(shoot.photos)
+    return _FRAME_REF.sub(lambda m: shoot.by_id(int(m.group(1)))["file"] if 1 <= int(m.group(1)) <= n else m.group(0), text)
+
+
+def _shown(shoot, p):
+    s = summary(p)
+    for k in ("reason", "why", "edit_recipe"):
+        s[k] = readable(s[k], shoot)
+    return s
+
+
 def state(shoot):
     return {
         "folder": shoot.folder, "name": os.path.basename(shoot.folder.rstrip("/")),
-        "photos": [summary(p) for p in shoot.photos],
+        "photos": [_shown(shoot, p) for p in shoot.photos],
         "moments": shoot.moments,
         "selection": shoot.selection,
         "target": shoot.brief["brief"].get("target_count"),
